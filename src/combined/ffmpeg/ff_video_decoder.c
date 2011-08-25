@@ -229,22 +229,21 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
                                             VO_BOTH_FIELDS|this->frame_flags);
 
     av_frame->opaque = img;
-
     xine_list_push_back(this->dr1_frames, av_frame);
 
     vaapi_accel_t *accel = (vaapi_accel_t*)img->accel_data; 
 
-    av_frame->data[0] = (void *)(uintptr_t)accel->va_surface_id;
-    av_frame->data[3] = (void *)(uintptr_t)accel->va_surface_id;
-
     av_frame->type = FF_BUFFER_TYPE_USER;
 
-    av_frame->age = 256*256*256*64;
-    //av_frame->age = 1;
+    av_frame->age = 1;
+
     av_frame->reordered_opaque = context->reordered_opaque;
 
+    av_frame->data[0] = (void *)(uintptr_t)accel->va_surface_id;
     av_frame->data[1] = NULL;
     av_frame->data[2] = NULL;
+    av_frame->data[3] = (void *)(uintptr_t)accel->va_surface_id;
+
     av_frame->linesize[0] = 0;
     av_frame->linesize[1] = 0;
     av_frame->linesize[2] = 0;
@@ -460,15 +459,23 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
 
   /* Some codecs (eg rv10) copy flags in init so it's necessary to set
    * this flag here in case we are going to use direct rendering */
-  if(this->codec->capabilities & CODEC_CAP_DR1 && this->codec_id != CODEC_ID_H264) {
+  if(this->codec->capabilities & CODEC_CAP_DR1 && this->codec_id != CODEC_ID_H264
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(52,69,0)
+     && this->codec_id != CODEC_ID_VP8
+#endif
+  )
     this->context->flags |= CODEC_FLAG_EMU_EDGE;
-  }
 
-  if (this->class->choose_speed_over_accuracy)
-    this->context->flags2 |= CODEC_FLAG2_FAST;
+  this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
 
   if(this->class->enable_vaapi)
+  {
     this->class->thread_count = this->context->thread_count = 1;
+
+    //this->context->skip_loop_filter = AVDISCARD_DEFAULT;
+    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+     _("ffmpeg_video_dec: force AVDISCARD_DEFAULT for VAAPI\n"));
+  }
 
   if (this->class->thread_count > 1) {
     if (this->codec->id != CODEC_ID_SVQ3
@@ -478,7 +485,33 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
      )
        this->context->thread_count = this->class->thread_count;
   }
- 
+
+  if (this->class->choose_speed_over_accuracy)
+      this->context->flags2 |= CODEC_FLAG2_FAST;
+
+  this->context->dsp_mask = 0;
+
+  (this->stream->video_out->open) (this->stream->video_out, this->stream);
+
+  this->skipframes = 0;
+
+  /* enable direct rendering by default */
+  this->output_format = XINE_IMGFMT_YV12;
+  if( this->codec->capabilities & CODEC_CAP_DR1 && this->codec_id != CODEC_ID_H264) {
+    this->context->get_buffer = get_buffer;
+    this->context->release_buffer = release_buffer;
+    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+     _("ffmpeg_video_dec: direct rendering enabled\n"));
+  }
+
+  if( this->class->enable_vaapi) {
+    this->output_format = XINE_IMGFMT_VAAPI;
+    this->context->get_buffer = get_buffer;
+    this->context->reget_buffer = get_buffer;
+    this->context->release_buffer = release_buffer;
+    this->context->get_format = get_format;
+  }
+
   pthread_mutex_lock(&ffmpeg_lock);
   if (avcodec_open (this->context, this->codec) < 0) {
     pthread_mutex_unlock(&ffmpeg_lock);
@@ -521,40 +554,7 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
       this->bih.biHeight = this->context->height;
     }
 
-
     set_stream_info(this);
-  }
-
-  if(this->class->enable_vaapi)
-  {
-    this->context->skip_loop_filter = AVDISCARD_DEFAULT;
-    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-     _("ffmpeg_video_dec: force AVDISCARD_DEFAULT for VAAPI\n"));
-  }
-  else
-  {
-    this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
-  }
-
-  (this->stream->video_out->open) (this->stream->video_out, this->stream);
-
-  this->skipframes = 0;
-
-  /* enable direct rendering by default */
-  this->output_format = XINE_IMGFMT_YV12;
-  if( this->codec->capabilities & CODEC_CAP_DR1 /*&& this->codec_id != CODEC_ID_H264 */&& !this->class->enable_vaapi) {
-    this->context->get_buffer = get_buffer;
-    this->context->release_buffer = release_buffer;
-    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-     _("ffmpeg_video_dec: direct rendering enabled\n"));
-  }
-  if( this->class->enable_vaapi) {
-    this->output_format = XINE_IMGFMT_VAAPI;
-    this->context->get_buffer = get_buffer;
-    //this->context->reget_buffer = get_buffer;
-    this->context->release_buffer = release_buffer;
-    this->context->get_format = get_format;
-    //this->context->flags |= CODEC_FLAG_EMU_EDGE;
   }
 
   /* flag for interlaced streams */
@@ -1614,6 +1614,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
                     "ffmpeg_video_dec: error decompressing frame\n");
           this->size = 0;
         } else {
+
           offset += len;
           this->size -= len;
 
