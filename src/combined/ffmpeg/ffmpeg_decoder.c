@@ -39,6 +39,9 @@ void init_once_routine(void) {
   pthread_mutex_init(&ffmpeg_lock, NULL);
   avcodec_init();
   avcodec_register_all();
+
+  av_log_set_level(AV_LOG_QUIET);
+
 }
 
 /*

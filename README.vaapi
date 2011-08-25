@@ -1,0 +1,112 @@
+Make sure you have the following in your ~/.xine/config.
+
+General ffmpeg settings :
+
+# Priorität für Dekoder ffmpeg-wmv8
+# numeric, default: 0
+engine.decoder_priorities.ffmpeg-wmv8:0
+
+# Priorität für Dekoder ffmpeg-wmv9
+# numeric, default: 0
+engine.decoder_priorities.ffmpeg-wmv9:0
+
+# Priorität für Dekoder ffmpegvideo
+# numeric, default: 0
+engine.decoder_priorities.ffmpegvideo:1
+
+# Priorität für Dekoder mpeg2
+# numeric, default: 0
+#engine.decoder_priorities.mpeg2:0
+
+Video out settings :
+
+#vaapi: set deinterlace to 0 ( none ), 1 ( top field ), 2 ( bob ).
+# numeric, default: 0
+video.output.vaapi_deinterlace:2
+
+# vaapi: reinit vaapi on every format change. When no reinit is used deinterlaced is turned off.
+# numeric, default: 1
+#video.output.vaapi_reinit:1
+
+# vaapi: VDR osd height workaround.
+# numeric, default: 0
+#video.output.vaapi_vdr_osd_height:0
+
+# vaapi: VDR osd width workaround.
+# numeric, default: 0
+#video.output.vaapi_vdr_osd_width:0
+
+# VAAPI Mpeg2 softdecoding
+# bool, default: 0
+#video.processing.vaapi_mpeg_sofdec:0
+
+# VAAPI Mpeg2 softdecoding deinterlace
+# bool, default: 0
+#video.processing.vaapi_mpeg_sofdec_deinterlace:0
+
+# default number of render surfaces
+# numeric, default: 21
+#video.output.vaapi_render_surfaces:21
+
+# vaapi: opengl output rendering
+# bool, default: 0
+#video.output.vaapi_opengl_render:0
+
+# vaapi: opengl rendering tfp
+# bool, default: 0
+#video.output.vaapi_opengl_use_tfp:0
+
+
+It is posible not to use reinit on every format change. The problem is that this does not 
+work relayable. On Intel VAAPI the driver crashes. Therefore deinterlacing is disabled
+when reinit is set to 0.
+
+Notes on use with VDR. The OSD will have some delay. This is technical and can only be overcome
+writting a complete new decoder which use VAAPI direct and not ffmpeg.
+
+For using unsclaed OSD there you can overwrite the OSD size in the config file.
+
+For xineliboutput use the defaults.
+
+For vdr-xine set in VDR the OSD size to 1920x1080 and use the following in ~/.xine/config :
+
+video.output.vaapi_vdr_osd_height:0
+video.output.vaapi_vdr_osd_width:0
+
+The workaround is needed, because vdr-xine does not report the real unscaled OSD size.
+
+
+When you get GPU hangs on Mpeg2 material set :
+
+video.processing.vaapi_mpeg_sofdec:1
+
+This disables VAAPI fpr Mpeg2.
+
+
+If xine ui crashes on startup with h264 streams try to raise the numer of rendering surfaces. Minimum 5 maximum 99.
+
+video.output.vaapi_render_surfaces:21
+
+
+For vdr-xine set in VDR the OSD size to 1920x1080 and use the following in ~/.xine/config :
+
+video.output.vaapi_vdr_osd_height:0
+video.output.vaapi_vdr_osd_width:0
+
+The workaround is needed, because vdr-xine does not report the real unscaled OSD size.
+
+You can use example.config.vaapi as an example config for xine.
+
+Call xine like : xine -V vaapi video.mkv
+
+xvba-vaapi hints:
+
+export LIBVA_DRIVER_NAME=xvba
+export LIBVA_DRIVERS_PATH=/usr/lib/dri/
+video.output.vaapi_opengl_render:1
+
+
+Known problems :
+xinliboutput doesn't work stable. locking issues.
+
+Postprocessing does not work. Do not use "--post vdr_video --post vdr-audio --post vdr" in your xine call.

@@ -437,6 +437,8 @@ static void deinterlace_dispose(post_plugin_t *this_gen)
   if (_x_post_dispose(this_gen)) {
     _flush_frames(this);
     pthread_mutex_destroy(&this->lock);
+    if(this->tvtime)
+      free(this->tvtime );
     free(this);
   }
 }

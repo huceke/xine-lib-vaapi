@@ -18,12 +18,12 @@ DISTCLEANFILES = $(ff_generated)
 EXTRA_DIST = xine_video.list xine_audio.list mkcodeclist.pl
 
 xineplug_decode_ff_la_SOURCES = ffmpeg_decoder.c ff_audio_decoder.c ff_video_decoder.c \
-                                ff_mpeg_parser.c ffmpeg_decoder.h ff_mpeg_parser.h
+																ff_mpeg_parser.c ffmpeg_decoder.h ff_mpeg_parser.h
 
 nodist_xineplug_decode_ff_la_SOURCES = ffmpeg_config.h
 
 xineplug_decode_ff_la_CFLAGS = $(AM_CFLAGS) $(FFMPEG_CFLAGS) $(FFMPEG_POSTPROC_CFLAGS)
-xineplug_decode_ff_la_LIBADD = $(XINE_LIB) $(MLIB_LIBS) -lm $(ZLIB_LIBS) \
+xineplug_decode_ff_la_LIBADD = $(XINE_LIB) $(MLIB_LIBS) $(ZLIB_LIBS) \
 	$(FFMPEG_LIBS) $(AVUTIL_LIBS) $(FFMPEG_POSTPROC_LIBS) $(PTHREAD_LIBS) $(LTLIBINTL)
 xineplug_decode_ff_la_LDFLAGS = $(AM_LDFLAGS) $(IMPURE_TEXT_LDFLAGS)
 

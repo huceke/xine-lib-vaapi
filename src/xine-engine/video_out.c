@@ -737,6 +737,13 @@ static vo_frame_t *vo_get_frame (xine_video_port_t *this_gen,
   return img;
 }
 
+static double tt()
+{
+  struct timeval tv;
+  gettimeofday(&tv, 0);
+  return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+}
+
 static int vo_frame_draw (vo_frame_t *img, xine_stream_t *stream) {
 
   vos_t         *this = (vos_t *) img->port;
@@ -745,6 +752,30 @@ static int vo_frame_draw (vo_frame_t *img, xine_stream_t *stream) {
   int64_t        pic_vpts ;
   int            frames_to_skip;
   int            duration;
+
+/*
+if (1)
+{
+  double t1 = tt();
+  static double t0 = -1;
+  if (t0 == -1) t0 = t1;
+  double dt = t1 - t0;
+  t0 = t1;
+  static int64_t pts = 0;
+  fprintf(stderr, "img->pts: %12" PRId64 ", pts: %12" PRId64 ", img->duration: %4d, time since last vo_frame_draw: %7.3lf ms", img->pts, pts, img->duration, dt);
+  if (img->pts)
+  {
+      if (pts != img->pts)
+            fprintf(stderr, " ERROR: %12" PRId64 "", img->pts - pts);
+        pts = img->pts + img->duration;
+  }
+  else
+  {
+      pts += img->duration;
+  }
+  fprintf(stderr, "\n");
+}
+*/
 
   /* handle anonymous streams like NULL for easy checking */
   if (stream == XINE_ANON_STREAM) stream = NULL;
