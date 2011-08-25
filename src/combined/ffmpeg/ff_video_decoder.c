@@ -460,7 +460,7 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
 
   /* Some codecs (eg rv10) copy flags in init so it's necessary to set
    * this flag here in case we are going to use direct rendering */
-  if(this->codec->capabilities & CODEC_CAP_DR1 /*&& this->codec_id != CODEC_ID_H264*/) {
+  if(this->codec->capabilities & CODEC_CAP_DR1 && this->codec_id != CODEC_ID_H264) {
     this->context->flags |= CODEC_FLAG_EMU_EDGE;
   }
 
@@ -479,14 +479,6 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
        this->context->thread_count = this->class->thread_count;
   }
  
-  /* avcodec_thread_init is deprecated */
-  /*
-  if (this->class->thread_count > 1 && !this->class->enable_vaapi) {
-    if (this->codec_id != CODEC_ID_SVQ3)
-      this->context->thread_count = this->class->thread_count;
-  }
-  */
-
   pthread_mutex_lock(&ffmpeg_lock);
   if (avcodec_open (this->context, this->codec) < 0) {
     pthread_mutex_unlock(&ffmpeg_lock);
@@ -543,9 +535,6 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
   {
     this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
   }
-#if AVVIDEO > 1
-  this->context->skip_idct = this->context->skip_frame = this->context->skip_loop_filter;
-#endif
 
   (this->stream->video_out->open) (this->stream->video_out, this->stream);
 
@@ -1318,7 +1307,7 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
       this->set_stream_info = 0;
     }
 
-    if (got_picture && av_framedisp->data[0] && this->context->skip_frame == AVDISCARD_DEFAULT) {
+    if (got_picture && av_framedisp->data[0]) {
 
       if( this->class->enable_vaapi && this->context->pix_fmt != PIX_FMT_VAAPI_VLD)
         this->output_format = XINE_IMGFMT_YV12;
@@ -1624,9 +1613,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
           xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
                     "ffmpeg_video_dec: error decompressing frame\n");
           this->size = 0;
-
         } else {
-
           offset += len;
           this->size -= len;
 
@@ -1672,7 +1659,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
         this->set_stream_info = 0;
       }
 
-      if (got_picture && this->av_frame->data[0] && this->context->skip_frame == AVDISCARD_DEFAULT) {
+      if (got_picture && this->av_frame->data[0]) {
 
         if( this->context->pix_fmt != PIX_FMT_VAAPI_VLD)
           this->output_format = XINE_IMGFMT_YV12;
@@ -1810,13 +1797,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
     /* workaround for demux_mpeg_pes sending fields as frames:
      * do not generate a bad frame for the first field picture
      */
-    if (!got_one_picture && (this->size || this->video_step || this->assume_bad_field_picture)
-#if AVVIDEO > 1
-        || this->context->skip_frame != AVDISCARD_DEFAULT
-#else
-        || this->context->hurry_up
-#endif
-    ) {
+    if (!got_one_picture && (this->size || this->video_step || this->assume_bad_field_picture)) {
       /* skipped frame, output a bad frame (use size 16x16, when size still uninitialized) */
       img = this->stream->video_out->get_frame (this->stream->video_out,
                                                 (this->bih.biWidth  <= 0) ? 16 : img->width,
