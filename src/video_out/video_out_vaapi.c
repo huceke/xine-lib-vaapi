@@ -1491,74 +1491,6 @@ static vo_frame_t *vaapi_alloc_frame (vo_driver_t *this_gen) {
   return (vo_frame_t *) frame;
 }
 
-static void vaapi_update_frame_format (vo_driver_t *this_gen,
-				    vo_frame_t *frame_gen,
-				    uint32_t width, uint32_t height,
-				    double ratio, int format, int flags) {
-  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
-  vaapi_frame_t       *frame      = (vaapi_frame_t*)frame_gen;
-  /*
-  vaapi_accel_t       *accel      = &frame->vaapi_accel_data;
-  ff_vaapi_context_t  *va_context = this->va_context;
-  */
-
-  lprintf("vaapi_update_frame_format\n");
-
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
-
-  frame->vo_frame.width = width;
-  frame->vo_frame.height = height;
-
-  if ((frame->width != width)
-      || (frame->height != height)
-      || (frame->format != format)) {
-
-    // (re-) allocate render space
-    av_freep (&frame->vo_frame.base[0]);
-    av_freep (&frame->vo_frame.base[1]);
-    av_freep (&frame->vo_frame.base[2]);
-
-    /* set init_vaapi on frame formats XINE_IMGFMT_YV12/XINE_IMGFMT_YUY2 only.
-     * for XINE_IMGFMT_VAAPI the init was already done.
-     */
-    if (format == XINE_IMGFMT_YV12) {
-      frame->vo_frame.pitches[0] = 8*((width + 7) / 8);
-      frame->vo_frame.pitches[1] = 8*((width + 15) / 16);
-      frame->vo_frame.pitches[2] = 8*((width + 15) / 16);
-      frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
-      frame->vo_frame.base[1] = av_mallocz (frame->vo_frame.pitches[1] * ((height+1)/2));
-      frame->vo_frame.base[2] = av_mallocz (frame->vo_frame.pitches[2] * ((height+1)/2));
-    } else if (format == XINE_IMGFMT_YUY2){
-      frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
-      frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
-    } else {
-      frame->vo_frame.proc_duplicate_frame_data = NULL;
-      frame->vo_frame.proc_provide_standard_frame_data = NULL;
-    }
-
-    frame->width  = width;
-    frame->height = height;
-    frame->format = format;
-    frame->flags  = flags;
-
-    vaapi_frame_field ((vo_frame_t *)frame, flags);
-  }
-
-  if( this->last_format != format && this->last_height != height && this->last_width != width  ) {
-    this->last_format = format;
-    this->last_height = height;
-    this->last_width  = width;
-    if(format == XINE_IMGFMT_YV12 || format == XINE_IMGFMT_YUY2)
-      this->valid_context = 0;
-  }
-
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
-
-  frame->ratio = ratio;
-  frame->vo_frame.future_frame = NULL;
-}
 
 /* Display OSD */
 static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
@@ -1998,6 +1930,82 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   return 0;
 }
 
+static void vaapi_update_frame_format (vo_driver_t *this_gen,
+				    vo_frame_t *frame_gen,
+				    uint32_t width, uint32_t height,
+				    double ratio, int format, int flags) {
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  vaapi_frame_t       *frame      = (vaapi_frame_t*)frame_gen;
+  /*
+  vaapi_accel_t       *accel      = &frame->vaapi_accel_data;
+  ff_vaapi_context_t  *va_context = this->va_context;
+  */
+
+  lprintf("vaapi_update_frame_format\n");
+
+  pthread_mutex_lock(&this->vaapi_lock);
+  XLockDisplay(this->display);
+
+  frame->vo_frame.width = width;
+  frame->vo_frame.height = height;
+
+  if ((frame->width != width)
+      || (frame->height != height)
+      || (frame->format != format)) {
+
+    // (re-) allocate render space
+    av_freep (&frame->vo_frame.base[0]);
+    av_freep (&frame->vo_frame.base[1]);
+    av_freep (&frame->vo_frame.base[2]);
+
+    /* set init_vaapi on frame formats XINE_IMGFMT_YV12/XINE_IMGFMT_YUY2 only.
+     * for XINE_IMGFMT_VAAPI the init was already done.
+     */
+    if (format == XINE_IMGFMT_YV12) {
+      frame->vo_frame.pitches[0] = 8*((width + 7) / 8);
+      frame->vo_frame.pitches[1] = 8*((width + 15) / 16);
+      frame->vo_frame.pitches[2] = 8*((width + 15) / 16);
+      frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
+      frame->vo_frame.base[1] = av_mallocz (frame->vo_frame.pitches[1] * ((height+1)/2));
+      frame->vo_frame.base[2] = av_mallocz (frame->vo_frame.pitches[2] * ((height+1)/2));
+    } else if (format == XINE_IMGFMT_YUY2){
+      frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
+      frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
+    } else {
+      frame->vo_frame.proc_duplicate_frame_data = NULL;
+      frame->vo_frame.proc_provide_standard_frame_data = NULL;
+    }
+
+    frame->width  = width;
+    frame->height = height;
+    frame->format = format;
+    frame->flags  = flags;
+    vaapi_frame_field ((vo_frame_t *)frame, flags);
+  }
+
+
+  if( this->last_format != format || this->last_height != height || this->last_width != width) {
+
+    lprintf("vaapi_update_frame_format %s height %d width %d\n", 
+        (format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
+        height, width);
+
+    this->last_format = format;
+    this->last_height = height;
+    this->last_width  = width;
+
+    if(format == XINE_IMGFMT_YV12 || format == XINE_IMGFMT_YUY2)
+      this->valid_context = 0;
+
+  }
+
+  XUnlockDisplay(this->display);
+  pthread_mutex_unlock(&this->vaapi_lock);
+
+  frame->ratio = ratio;
+  frame->vo_frame.future_frame = NULL;
+}
+
 /* Used in vaapi_display_frame to determine how long displaying a frame takes
    - if slower than 60fps, print a message
 */
@@ -2063,13 +2071,19 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  if(!this->valid_context) {
+  if(!this->valid_context && (this->last_width == frame->width && this->last_height == frame->height ) ) {
+    lprintf("vaapi_display_frame %s height %d width %d\n", 
+        (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
+        frame->height, frame->width);
+
     vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
     this->sc.force_redraw = 1;
   }
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
+
+  vaapi_redraw_needed (this_gen);
 
   /* The opengl rendering is not inititalized till here.
    * Lets do the opengl magic here and inititalize it.
@@ -2079,8 +2093,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height);
     this->sc.force_redraw = 1;
   }
-
-  vaapi_redraw_needed (this_gen);
 
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
