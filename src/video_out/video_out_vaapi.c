@@ -2233,6 +2233,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
         if(this->opengl_render) {
 
+          vaapi_x11_trap_errors();
+
           if(this->opengl_use_tfp) {
             lprintf("opengl render tfp\n");
             vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->gl_image_pixmap,
@@ -2251,7 +2253,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
               break;
           }
 
-          vaapi_glx_flip_page(frame_gen, 0, 0, va_context->width, va_context->height);
+          if(!vaapi_x11_untrap_errors())
+            vaapi_glx_flip_page(frame_gen, 0, 0, va_context->width, va_context->height);
 
         } else {
 
