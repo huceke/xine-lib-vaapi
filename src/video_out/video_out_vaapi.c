@@ -1282,6 +1282,20 @@ static void vaapi_display_attribs(vo_driver_t *this_gen) {
   }
 }
 
+static void vaapi_set_background_color(vo_driver_t *this_gen) {
+  vaapi_driver_t      *this = (vaapi_driver_t *)this_gen;
+  ff_vaapi_context_t  *va_context = this->va_context;
+
+  if(!this->valid_context)
+    return;
+
+  VADisplayAttribute attr;
+  memset( &attr, 0, sizeof(attr) );
+  attr.type  = VADisplayAttribBackgroundColor;
+  attr.value = 0x000000;
+  vaSetDisplayAttributes(va_context->va_display, &attr, 1);
+}
+
 static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int width, int height, int softsurface) {
   vaapi_driver_t      *this = (vaapi_driver_t *)this_gen;
   ff_vaapi_context_t  *va_context = this->va_context;
@@ -1323,12 +1337,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     vaapi_close(this);
   }
 
-
-  VADisplayAttribute attr;
-  memset( &attr, 0, sizeof(attr) );
-  attr.type  = VADisplayAttribBackgroundColor;
-  attr.value = 0x000000;
-  vaSetDisplayAttributes(va_context->va_display, &attr, 1);
+  vaapi_set_background_color(this_gen);
 
   va_context->width = width;
   va_context->height = height;
@@ -2011,6 +2020,7 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
                1.0f / (GLfloat)width);
       glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
     }
+
     return 1;
   }
 
