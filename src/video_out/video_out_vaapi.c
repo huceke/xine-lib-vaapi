@@ -2168,7 +2168,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       int interlaced_frame    = !frame->vo_frame.progressive_frame;
       int top_field_first     = frame->vo_frame.top_field_first;
 
-      if(frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12 && va_image != NULL) {
+      if((frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12) && va_image != NULL) {
 
         lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x\n", va_surface_id, va_image->image_id);
 
@@ -2179,7 +2179,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
           /* Copy xine frames into VAAPI images */
           if(frame->format == XINE_IMGFMT_YV12) {
 
-            if(va_context->softsurface) {
+            //if(va_context->softsurface) {
 
               lprintf("softsurface yv12_to_yv12 convert\n");
 
@@ -2195,7 +2195,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
                   (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
                 /* width x height */
                   frame_gen->width, frame_gen->height);
-            }
+            //}
 
           } else if (frame->format == XINE_IMGFMT_YUY2) {
 
