@@ -74,9 +74,6 @@ struct ff_vaapi_context_s {
   int               width;
   int               height;
   int               va_profile;
-  int               va_head;
-  int               va_output_head;
-  int               va_tail;
   VAImage           va_subpic_image;
   VASubpictureID    va_subpic_id;
   int               va_subpic_width;
@@ -91,6 +88,8 @@ struct ff_vaapi_context_s {
 typedef struct {
   vo_frame_t                *vo_frame;
   VASurfaceID               va_surface_id;
+  VASurfaceID               va_output_surface_id;
+  VAImage                   *va_output_image;
 
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softsurface);
   int (*profile_from_imgfmt)(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec);

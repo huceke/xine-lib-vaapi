@@ -72,7 +72,7 @@
 #include "accel_vaapi.h"
 
 #define  RENDER_SURFACES  21
-#define  OUTPUT_SURFACES  2
+#define  OUTPUT_SURFACES  21
 
 #define IMGFMT_VAAPI               0x56410000 /* 'VA'00 */
 #define IMGFMT_VAAPI_MASK          0xFFFF0000
@@ -991,9 +991,6 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_profile                = 0;
   this->init_vaapi                      = 0;
   this->valid_context                   = 0;
-  va_context->va_head                   = 0;
-  va_context->va_output_head            = 0;
-  va_context->va_tail                   = 0;
   va_context->is_bound                  = 0;
   va_context->gl_surface                = NULL;
   va_context->va_osd_associated         = 0;
@@ -1393,6 +1390,11 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
     vaStatus = vaapi_create_image((vo_driver_t *)this, va_output_surface_ids[i], &va_output_image[i], va_context->width, va_context->height);
     if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()"))
       goto error;
+    if(this->frames[i]) {
+      vaapi_frame_t *frame = this->frames[i];
+      frame->vaapi_accel_data.va_output_surface_id = va_output_surface_ids[i];
+      frame->vaapi_accel_data.va_output_image = &va_output_image[i];
+    }
   }
 
   this->valid_context = 1;
@@ -1407,6 +1409,7 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : hue : %d\n", va_context->va_equalizer.hue.value);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : saturation : %d\n", va_context->va_equalizer.saturation.value); 
 
+  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : is_bound : %d\n", va_context->is_bound);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : sucessfull\n");
 
   XUnlockDisplay(this->display);
@@ -1486,8 +1489,12 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
 				    vo_frame_t *frame_gen,
 				    uint32_t width, uint32_t height,
 				    double ratio, int format, int flags) {
-  vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
-  vaapi_frame_t   *frame = (vaapi_frame_t*)frame_gen;
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  vaapi_frame_t       *frame      = (vaapi_frame_t*)frame_gen;
+  /*
+  vaapi_accel_t       *accel      = &frame->vaapi_accel_data;
+  ff_vaapi_context_t  *va_context = this->va_context;
+  */
 
   XLockDisplay(this->display);
 
@@ -1531,6 +1538,22 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
 
     vaapi_frame_field ((vo_frame_t *)frame, flags);
   }
+
+  /*
+  if(format != XINE_IMGFMT_VAAPI && this->valid_context) {
+    VAStatus vaStatus;
+
+    if(!va_context->is_bound) {
+
+      VAImage *va_image = accel->va_output_image;
+
+      vaStatus = vaPutImage(va_context->va_display, accel->va_output_surface_id, va_image->image_id,
+                       0, 0, va_image->width, va_image->height,
+                       0, 0, va_image->width, va_image->height);
+      vaapi_check_status(this_gen, vaStatus, "vaPutSurface()");
+    }
+  }
+  */
 
   XUnlockDisplay(this->display);
 
@@ -2111,10 +2134,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 #endif
       va_surface_id = accel->va_surface_id;
     } else {
-      va_surface_id = va_output_surface_ids[va_context->va_output_head];
-      va_image = &va_output_image[va_context->va_output_head];
-
-      va_context->va_output_head = (va_context->va_output_head + 1) % (OUTPUT_SURFACES);
+      va_surface_id = accel->va_output_surface_id;
+      va_image = accel->va_output_image;
     }
 
     VASurfaceStatus surf_status = 0;
@@ -2147,7 +2168,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       int interlaced_frame    = !frame->vo_frame.progressive_frame;
       int top_field_first     = frame->vo_frame.top_field_first;
 
-      if(frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12) {
+      if(frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12 && va_image != NULL) {
 
         lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x\n", va_surface_id, va_image->image_id);
 
@@ -2592,6 +2613,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   if( va_context->va_display ) {
     VAStatus vaStatus;
 
+
     vaStatus = vaInitialize(va_context->va_display, &maj, &min);
 
     if(vaapi_check_status((vo_driver_t *)this, vaStatus, "vaInitialize()")) {
@@ -2609,7 +2631,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
           break;
         }
       }
-
     } else {
       free(this);
       free(va_context);
@@ -2620,6 +2641,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     free(va_context);
     return NULL;
   }
+
 
   _x_vo_scale_init (&this->sc, 1, 0, config );
 
