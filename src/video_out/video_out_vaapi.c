@@ -527,7 +527,6 @@ static void destroy_glx(vo_driver_t *this_gen)
   }
 
   this->valid_opengl_context = 0;
-
 }
 
 static GLXFBConfig *get_fbconfig_for_depth(vo_driver_t *this_gen, int depth)
@@ -2036,6 +2035,15 @@ static double timeOfDay()
     return ((double)t.tv_sec) + (((double)t.tv_usec)/1000000.0);
 }
 
+static int is_window(Display *dpy, Drawable drawable)
+{
+  XWindowAttributes wattr;
+
+  vaapi_x11_trap_errors();
+  XGetWindowAttributes(dpy, drawable, &wattr);
+  return vaapi_x11_untrap_errors() == 0;
+}
+
 static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   vaapi_driver_t     *this          = (vaapi_driver_t *) this_gen;
   vaapi_frame_t      *frame         = (vaapi_frame_t *) frame_gen;
@@ -2108,7 +2116,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   //int stream_speed = frame->vo_frame.stream ? xine_get_param(frame->vo_frame.stream, XINE_PARAM_FINE_SPEED) : 0;
   //printf("stream_speed %d\n", stream_speed);
 
-  if(this->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) ) ) {
+  if(this->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) )) {
 
     if(va_context->softsurface && ((frame_gen->width != va_context->width) || (frame_gen->height != va_context->height))) {
       lprintf("frame_gen->width %d va_context->width %d frame_gen->height %d va_context->height %d\n",
@@ -2390,10 +2398,8 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_WILL_DESTROY_DRAWABLE\n");
 
-    vaapi_x11_trap_errors();
     if(this->valid_opengl_context)
       destroy_glx(this_gen);
-    vaapi_x11_untrap_errors();
 
     XUnlockDisplay( this->display );
   }
@@ -2403,10 +2409,8 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
 
-    vaapi_x11_trap_errors();
     if(this->valid_opengl_context)
       destroy_glx(this_gen);
-    vaapi_x11_untrap_errors();
 
     this->drawable = (Drawable) data;
 
