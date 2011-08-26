@@ -1289,10 +1289,8 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   int                 maj, min, i;
   VAStatus            vaStatus;
 
-  XLockDisplay(this->display);
-
   /* Reinit VAAPI or reuse context. */
-  if(this->reinit) {
+  if(this->reinit || !va_context->va_display) {
 
     vaapi_close(this);
 
@@ -1306,13 +1304,25 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
       goto error;
 
     lprintf("libva: %d.%d\n", maj, min);
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init: Vendor : %s\n", vaQueryVendorString(va_context->va_display));
-
+    const char *vendor = vaQueryVendorString(va_context->va_display);
+    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Vendor : %s\n", vendor);
+    
+    this->query_va_status = 1;
+    char *p = (char *)vendor;
+    for(i = 0; i < strlen(vendor); i++, p++) {
+      if(strncmp(p, "VDPAU", strlen("VDPAU")) == 0) {
+        xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Enable Splitted-Desktop Systems VDPAU workarounds. Please contact Splitted-Desktop to fix this missbehavior. VAAPI will not work stable without a working vaQuerySurfaceStatus extension.\n");
+        this->query_va_status = 0;
+        this->opengl_use_tfp = 0;
+        break;
+      }
+    }
   } else {
     if(va_context->va_profile == va_profile && va_context->width == width && va_context->height == height)
       return VA_STATUS_SUCCESS;
     vaapi_close(this);
   }
+
 
   VADisplayAttribute attr;
   memset( &attr, 0, sizeof(attr) );
@@ -1355,7 +1365,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     goto error;
   }
 
-  /* Special case for vaapi softoutput only */
+  /* hardware decoding needs more setup */
   if(!softsurface) {
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : Profile: %d (%s) Entrypoint %d (%s) Surfaces %d\n", va_context->va_profile, vaapi_profile_to_string(va_context->va_profile), VAEntrypointVLD, vaapi_entrypoint_to_string(VAEntrypointVLD), RENDER_SURFACES);
 
@@ -1409,15 +1419,11 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : is_bound : %d\n", va_context->is_bound);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : sucessfull\n");
 
-  XUnlockDisplay(this->display);
-
   return VA_STATUS_SUCCESS;
 
 error:
   vaapi_close(this);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : error init vaapi\n");
-
-  XUnlockDisplay(this->display);
 
   return VA_STATUS_ERROR_UNKNOWN;
 }
@@ -1427,8 +1433,17 @@ error:
  * Therefore we do it in vaapi_display_frame to get a valid VAAPI context too.*/
 static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int height, int softsurface) {
   vo_driver_t *this_gen = (vo_driver_t *) frame_gen->driver;
+  vaapi_driver_t *this  = (vaapi_driver_t *) this_gen;
 
-  return vaapi_init_internal(this_gen, va_profile, width, height, softsurface);
+  VAStatus vaStatus;
+
+  XLockDisplay(this->display);
+
+  vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softsurface);
+
+  XUnlockDisplay(this->display);
+
+  return vaStatus;
 }
 
 static void vaapi_frame_proc_slice (vo_frame_t *vo_img, uint8_t **src)
@@ -1528,9 +1543,11 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
       frame->vo_frame.base[1] = av_mallocz (frame->vo_frame.pitches[1] * ((height+1)/2));
       frame->vo_frame.base[2] = av_mallocz (frame->vo_frame.pitches[2] * ((height+1)/2));
+      this->va_context->softsurface = 1;
     } else if (format == XINE_IMGFMT_YUY2){
       frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
+      this->va_context->softsurface = 1;
     } else {
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
@@ -1543,30 +1560,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
 
     vaapi_frame_field ((vo_frame_t *)frame, flags);
   }
-
-  /* format changed -> reinit */
-  if ((frame->width != width)
-      || (frame->height != height)
-      || (this->last_format != format)) {
-    this->valid_context = 0;
-    this->last_format = format;
-  }
-    
-  /*
-  if(format != XINE_IMGFMT_VAAPI && this->valid_context) {
-    VAStatus vaStatus;
-
-    if(!va_context->is_bound) {
-
-      VAImage *va_image = accel->va_output_image;
-
-      vaStatus = vaPutImage(va_context->va_display, accel->va_output_surface_id, va_image->image_id,
-                       0, 0, va_image->width, va_image->height,
-                       0, 0, va_image->width, va_image->height);
-      vaapi_check_status(this_gen, vaStatus, "vaPutSurface()");
-    }
-  }
-  */
 
   XUnlockDisplay(this->display);
 
@@ -2055,6 +2048,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   VAStatus            vaStatus;
   VAStatus            vaStatusDst;
 
+  lprintf("vaapi_display_frame\n");
+
   /*
    * let's see if this frame is different in size / aspect
    * ratio from the previous one
@@ -2088,19 +2083,35 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
    * This are software decoded frames. So VAAPI is not initialized from
    * the decoder side. Lets inititalize here */
 
+  /*
   if(!this->valid_context) {
-    vaapi_init(frame_gen, 0, frame->width, frame->height, 1);
+    vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    //vaapi_init_internal(frame_gen->driver, 0, 1920, 1080, 1);
     this->sc.force_redraw = 1;
+  }
+  */
+  XLockDisplay(this->display);
+
+  if(va_context->softsurface && ((frame_gen->width != va_context->width) || (frame_gen->height != va_context->height))) {
+    lprintf("frame_gen->width %d va_context->width %d frame_gen->height %d va_context->height %d\n",
+        frame_gen->width, va_context->width, frame_gen->height, va_context->height);
+
+    vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    //vaapi_init_internal(frame_gen->driver, 0, 1920, 1080, 1);
+
+    this->sc.force_redraw = 1;
+
   }
 
   /* The opengl rendering is not inititalized till here.
    * Lets do the opengl magic here and inititalize it.
    * Opengl init must be done before redraw 
    */
-  if(this->opengl_render && !this->valid_opengl_context) {
+  if(this->opengl_render && !this->valid_opengl_context && this->valid_context) {
     vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height);
     this->sc.force_redraw = 1;
   }
+  XUnlockDisplay(this->display);
 
   vaapi_redraw_needed (this_gen);
 
@@ -2117,13 +2128,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   //printf("stream_speed %d\n", stream_speed);
 
   if(this->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) )) {
-
-    if(va_context->softsurface && ((frame_gen->width != va_context->width) || (frame_gen->height != va_context->height))) {
-      lprintf("frame_gen->width %d va_context->width %d frame_gen->height %d va_context->height %d\n",
-          frame_gen->width, va_context->width, frame_gen->height, va_context->height);
-
-      vaapi_init(frame_gen, 0, frame->width, frame->height, 1);
-    }
 
     if ( frame->format == XINE_IMGFMT_VAAPI ) {
 #ifdef DEBUG_SURFACE
@@ -2213,7 +2217,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
           if(!va_context->is_bound) {
             vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
                        0, 0, va_image->width, va_image->height,
-                       0, 0, va_image->width, va_image->height);
+                       0, 0, va_context->width, va_context->height);
+                       //0, 0, va_image->width, va_image->height);
             vaapi_check_status(this_gen, vaStatus, "vaPutSurface()");
           }
 
@@ -2221,8 +2226,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       }
 
       /* Final VAAPI rendering. The deinterlacing can be controled by xine config.*/
-      for(i = 0; i <= !!((this->deinterlace > 1) && interlaced_frame); i++) {
-        unsigned int flags = (this->deinterlace && (interlaced_frame) ? (((!!(top_field_first)) ^ i) == 0 ? VA_BOTTOM_FIELD : VA_TOP_FIELD) : VA_FRAME_PICTURE);
+      unsigned int deint = (va_context->softsurface) ? 0 : this->deinterlace;
+      for(i = 0; i <= !!((deint > 1) && interlaced_frame); i++) {
+        unsigned int flags = (deint && (interlaced_frame) ? (((!!(top_field_first)) ^ i) == 0 ? VA_BOTTOM_FIELD : VA_TOP_FIELD) : VA_FRAME_PICTURE);
 
         //flags |= VA_FILTER_SCALING_NL_ANAMORPHIC;
 
@@ -2417,8 +2423,6 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 
     this->drawable = (Drawable) data;
 
-    //vaapi_init_internal(this_gen, this->va_context->va_profile, this->va_context->width, this->va_context->height, this->va_context->softsurface);
-
     this->sc.force_redraw = 1;
 
     XUnlockDisplay( this->display );
@@ -2546,7 +2550,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   x11_visual_t            *visual = (x11_visual_t *) visual_gen;
   vaapi_driver_t          *this;
   config_values_t         *config = class->config;
-  int                     maj, min;
 
   this = (vaapi_driver_t *) calloc(1, sizeof(vaapi_driver_t));
   if (!this)
@@ -2560,7 +2563,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->drawable                = visual->d;
 
   this->va_context              = calloc(1, sizeof(ff_vaapi_context_t));
-  ff_vaapi_context_t            *va_context = this->va_context;
 
   /* number of video frames from config - register it with the default value. */
   int frame_num = config->register_num (config, "engine.buffers.video_num_frames", RENDER_SURFACES, /* default */
@@ -2604,43 +2606,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   vaapi_init_va_context(this);
   vaapi_init_subpicture(this);
-
-  va_context->va_display        = NULL;
-
-  va_context->va_display = vaapi_get_display(this->display, this->opengl_render);
-
-  if( va_context->va_display ) {
-    VAStatus vaStatus;
-
-
-    vaStatus = vaInitialize(va_context->va_display, &maj, &min);
-
-    if(vaapi_check_status((vo_driver_t *)this, vaStatus, "vaInitialize()")) {
-      lprintf("libva: %d.%d\n", maj, min);
-      const char *vendor = vaQueryVendorString(va_context->va_display);
-      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Vendor : %s\n", vendor);
-
-      this->query_va_status = 1;
-      int i =0;
-      char *p = (char *)vendor;
-      for(i = 0; i < strlen(vendor); i++, p++) {
-        if(strncmp(p, "VDPAU", strlen("VDPAU")) == 0) {
-          xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Enable Splitted-Desktop Systems VDPAU workarounds. Please contact Splitted-Desktop to fix this missbehavior. VAAPI will not work stable without a working vaQuerySurfaceStatus extension.\n");
-          this->query_va_status = 0;
-          break;
-        }
-      }
-    } else {
-      free(this);
-      free(va_context);
-      return NULL;
-    }
-  } else {
-    free(this);
-    free(va_context);
-    return NULL;
-  }
-
 
   _x_vo_scale_init (&this->sc, 1, 0, config );
 
@@ -2700,6 +2665,11 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   if(!this->reinit)
     this->deinterlace = 0;
+
+  if(vaapi_init_internal((vo_driver_t *)this, 0, 1920, 1080, 1) != VA_STATUS_SUCCESS) {
+    vaapi_dispose((vo_driver_t *)this);
+    return NULL;
+  }
 
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Deinterlace : %d\n", this->deinterlace);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Reinit : %d\n", this->reinit);
