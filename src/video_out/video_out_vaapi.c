@@ -1348,13 +1348,15 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     }
   }
 
-  for(i = 0; i < RENDER_SURFACES; i++) {
-    vaStatus = vaapi_create_image((vo_driver_t *)this, va_surface_ids[i], &va_output_image[i], va_context->width, va_context->height);
-    if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()"))
-      goto error;
-    if(this->frames[i]) {
-      vaapi_frame_t *frame = this->frames[i];
-      frame->vaapi_accel_data.va_output_image = &va_output_image[i];
+  if(softrender) {
+    for(i = 0; i < RENDER_SURFACES; i++) {
+      vaStatus = vaapi_create_image((vo_driver_t *)this, va_surface_ids[i], &va_output_image[i], va_context->width, va_context->height);
+      if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()"))
+        goto error;
+      if(this->frames[i]) {
+        vaapi_frame_t *frame = this->frames[i];
+        frame->vaapi_accel_data.va_output_image = &va_output_image[i];
+      }
     }
   }
 
