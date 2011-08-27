@@ -1066,10 +1066,10 @@ static void destroy_image(vo_driver_t *this_gen, VAImage *va_image) {
   if(va_image->image_id != VA_INVALID_ID) {
     lprintf("destroy_image 0x%08x\n", va_image->image_id);
     vaDestroyImage(va_context->va_display, va_image->image_id);
-    va_image->image_id = VA_INVALID_ID;
-    va_image->width = 0;
-    va_image->height = 0;
   }
+  va_image->image_id = VA_INVALID_ID;
+  va_image->width = 0;
+  va_image->height = 0;
 }
 
 /* Allocated VAAPI image */
@@ -1131,6 +1131,7 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
 
 error:
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " error create image\n");
+  va_image->image_id = VA_INVALID_ID;
   free(va_p_fmt);
   return VA_STATUS_ERROR_UNKNOWN;
 }
@@ -1503,9 +1504,17 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
   if(!this->valid_context)
     return 0;
 
+  pthread_mutex_lock(&this->vaapi_lock);
+  XLockDisplay(this->display);
+
+
   if(!bShow) {
     if(va_context->va_osd_associated)
       vaapi_destroy_subpicture(this_gen);
+
+    XUnlockDisplay(this->display);
+    pthread_mutex_unlock(&this->vaapi_lock);
+
     return 1;
   }
   
@@ -1516,8 +1525,15 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
     va_context->va_osd_associated = 0;
 
     vaapi_destroy_subpicture(this_gen);
-    if(!(vaapi_create_subpicture(this_gen, this->overlay_bitmap_width, this->overlay_bitmap_height) == VA_STATUS_SUCCESS))
+
+    vaStatus = vaapi_create_subpicture(this_gen, this->overlay_bitmap_width, this->overlay_bitmap_height);
+    if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_subpicture()")) {
+      
+      XUnlockDisplay(this->display);
+      pthread_mutex_unlock(&this->vaapi_lock);
+
       return 0;
+    }
 
     lprintf( "vaapi overlay: overlay_width=%d overlay_height=%d unscaled %d va_subpic_id 0x%08x ovl_changed %d has_overlay %d bShow %d overlay_bitmap_width %d overlay_bitmap_height %d va_context->width %d va_context->height %d\n", 
            this->overlay_output_width, this->overlay_output_height, this->has_overlay, 
@@ -1525,13 +1541,15 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
            this->overlay_bitmap_width, this->overlay_bitmap_height,
            va_context->width, va_context->height);
 
-    if(va_context->va_subpic_id == VA_INVALID_ID || va_context->va_subpic_image.image_id == VA_INVALID_ID)
-      return 0;
-
     vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
 
-    if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()"))
+    if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()")) {
+
+      XUnlockDisplay(this->display);
+      pthread_mutex_unlock(&this->vaapi_lock);
+
       return 0;
+    }
 
     xine_fast_memcpy((uint32_t *)p_base, this->overlay_bitmap, this->overlay_bitmap_width * this->overlay_bitmap_height * sizeof(uint32_t));
   
@@ -1551,9 +1569,16 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
     if(vaapi_check_status(this_gen, vaStatus, "vaAssociateSubpicture()")) {
       this->osd_displayed = 1;
       va_context->va_osd_associated = 1;
+
+      XUnlockDisplay(this->display);
+      pthread_mutex_unlock(&this->vaapi_lock);
+
       return 1;
     }
   }
+
+  XUnlockDisplay(this->display);
+  pthread_mutex_unlock(&this->vaapi_lock);
 
   return 0;
 }
@@ -1630,12 +1655,6 @@ static void vaapi_overlay_blend (vo_driver_t *this_gen,
   this->overlays[i] = overlay;
 
   ++this->ovl_changed;
-  /* Apply OSD layer. */
-  /*
-  if(this->valid_context) {
-    vaapi_ovl_associate(frame_gen->driver, this->has_overlay);
-  }
-  */
 }
 
 static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
@@ -2252,13 +2271,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   } else {
    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format 0x%08x\n", frame->format);
   }
-
-  /* Apply OSD layer. */
-  /*
-  if(this->valid_context) {
-    vaapi_ovl_associate(frame_gen->driver, this->has_overlay);
-  }
-  */
 
   XSync(this->display, False);
 
