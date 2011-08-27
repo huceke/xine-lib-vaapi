@@ -194,6 +194,7 @@ struct vaapi_driver_s {
   unsigned int        last_format;
   unsigned int        last_height;
   unsigned int        last_width;
+  unsigned int        reinit_rendering;
 };
 
 VASurfaceID         *va_surface_ids = NULL;
@@ -238,7 +239,6 @@ static int vaapi_check_status(vo_driver_t *this_gen, VAStatus vaStatus, const ch
     return 0;
   }
   return 1;
-
 }
 
 typedef struct {
@@ -495,37 +495,48 @@ static void vaapi_glx_flip_page(vo_frame_t *frame_gen, int left, int top, int ri
 
 static void destroy_glx(vo_driver_t *this_gen)
 {
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
+  vaapi_driver_t        *this       = (vaapi_driver_t *) this_gen;
+  ff_vaapi_context_t    *va_context = this->va_context;
 
-  if(!this->opengl_render)
+  if(!this->opengl_render || !this->valid_opengl_context)
     return;
 
   //if (gl_finish)
   //  glFinish();
 
-  vaapi_x11_trap_errors();
-  if(this->gl_pixmap)
+  if(va_context->gl_surface) {
+    VAStatus vaStatus = vaDestroySurfaceGLX(va_context->va_display, va_context->gl_surface);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaceGLX()");
+    va_context->gl_surface = NULL;
+  }
+
+  if(this->gl_pixmap) {
+    vaapi_x11_trap_errors();
     mpglXDestroyPixmap(this->display, this->gl_pixmap);
-  this->gl_pixmap = None;
-  XSync(this->display, False);
-  vaapi_x11_untrap_errors();
+    XSync(this->display, False);
+    vaapi_x11_untrap_errors();
+    this->gl_pixmap = None;
+  }
 
-  if(this->gl_image_pixmap)
+  if(this->gl_image_pixmap) {
     XFreePixmap(this->display, this->gl_image_pixmap);
-  this->gl_image_pixmap = None;
+    this->gl_image_pixmap = None;
+  }
 
-  if(this->gl_texture)
+  if(this->gl_texture) {
     glDeleteTextures(1, &this->gl_texture);
-  this->gl_texture = GL_NONE;
-
-  if(this->gl_vinfo)
-    XFree(this->gl_vinfo);
-  this->gl_vinfo = NULL;
+    this->gl_texture = GL_NONE;
+  }
 
   if(this->gl_context) {
     glXMakeCurrent(this->display, None, NULL);
     glXDestroyContext(this->display, this->gl_context);
     this->gl_context = 0;
+  }
+
+  if(this->gl_vinfo) {
+    XFree(this->gl_vinfo);
+    this->gl_vinfo = NULL;
   }
 
   this->valid_opengl_context = 0;
@@ -673,9 +684,6 @@ static int vaapi_glx_config_glx(vo_driver_t *this_gen, unsigned int width, unsig
   vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
 
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
-
   this->gl_vinfo = glXChooseVisual(this->display, this->screen, gl_visual_attr);
   if(!this->gl_vinfo) {
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : error glXChooseVisual\n");
@@ -763,21 +771,22 @@ static int vaapi_glx_config_glx(vo_driver_t *this_gen, unsigned int width, unsig
 
   if(!this->opengl_use_tfp) {
     VAStatus vaStatus = vaCreateSurfaceGLX(va_context->va_display, GL_TEXTURE_2D, this->gl_texture, &va_context->gl_surface);
-    if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaceGLX()"))
+    if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaceGLX()")) {
+      va_context->gl_surface = NULL;
       goto error;
+    }
+  } else {
+    va_context->gl_surface = NULL;
   }
 
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : GL setup done\n");
 
   this->valid_opengl_context = 1;
-
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
   return 1;
 
 error:
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
+  destroy_glx(this_gen);
+  this->valid_opengl_context = 0;
   return 0;
 }
 
@@ -1015,12 +1024,6 @@ static void vaapi_close(vaapi_driver_t *this) {
 
   int i;
 
-  if(this->valid_opengl_context)
-    destroy_glx((vo_driver_t *)this);
-
-  if(!this->opengl_use_tfp && va_context->gl_surface)
-    vaDestroySurfaceGLX(va_context->va_display, va_context->gl_surface);
-
   vaapi_destroy_subpicture((vo_driver_t *)this);
 
   if(va_context->va_context_id != VA_INVALID_ID)
@@ -1038,6 +1041,8 @@ static void vaapi_close(vaapi_driver_t *this) {
       vaDestroySurfaces(va_context->va_display, &va_surface_ids[i], 1);
     }
   }
+
+  destroy_glx((vo_driver_t *)this);
 
   if(va_context->va_config_id != VA_INVALID_ID)
     vaDestroyConfig(va_context->va_display, va_context->va_config_id);
@@ -1374,7 +1379,6 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   }
 
   this->valid_context = 1;
-  this->valid_opengl_context = 0;
 
   vaapi_display_attribs((vo_driver_t *)this);
 
@@ -2089,17 +2093,28 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   vaapi_redraw_needed (this_gen);
 
+  pthread_mutex_lock(&this->vaapi_lock);
+  XLockDisplay(this->display);
+
   /* The opengl rendering is not inititalized till here.
    * Lets do the opengl magic here and inititalize it.
    * Opengl init must be done before redraw 
    */
   if(this->opengl_render && !this->valid_opengl_context && this->valid_context) {
-    vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height);
-    this->sc.force_redraw = 1;
+    if(vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height))
+      this->sc.force_redraw = 1;
   }
 
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  /* reinit of the rendering was triggered */
+  if(this->reinit_rendering) {
+    destroy_glx(this_gen);
+
+    if(this->opengl_render && this->valid_context)
+      vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
+
+    this->sc.force_redraw = 1;
+    this->reinit_rendering = 0;
+  }
 
   double start_time;
   double end_time;
@@ -2352,7 +2367,7 @@ static void vaapi_get_property_min_max (vo_driver_t *this_gen,
 
 static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 				 int data_type, void *data) {
-  vaapi_driver_t     *this = (vaapi_driver_t *) this_gen;
+  vaapi_driver_t     *this        = (vaapi_driver_t *) this_gen;
 
   switch (data_type) {
 #ifndef XINE_DISABLE_DEPRECATED_FEATURES
@@ -2374,13 +2389,15 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
   break;
 
   case XINE_GUI_SEND_WILL_DESTROY_DRAWABLE: {
+    pthread_mutex_lock(&this->vaapi_lock);
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_WILL_DESTROY_DRAWABLE\n");
 
-    if(this->valid_opengl_context)
-      destroy_glx(this_gen);
+    this->reinit_rendering = 1;
+    destroy_glx(this_gen);
 
     XUnlockDisplay( this->display );
+    pthread_mutex_unlock(&this->vaapi_lock);
   }
   break;
 
@@ -2389,12 +2406,10 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
 
-    if(this->valid_opengl_context)
-      destroy_glx(this_gen);
+    this->reinit_rendering = 1;
+    destroy_glx(this_gen);
 
     this->drawable = (Drawable) data;
-
-    this->sc.force_redraw = 1;
 
     XUnlockDisplay( this->display );
     pthread_mutex_unlock(&this->vaapi_lock);
@@ -2599,6 +2614,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->last_format                    = 0;
   this->last_height                    = 0;
   this->last_width                     = 0;
+  this->reinit_rendering               = 0;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
         _("vaapi: VDR osd width workaround."),
