@@ -322,7 +322,7 @@ audio.device.alsa_front_device:default
 
 # Zu benutzender Videotreiber
 # { auto  vdpau  xv  vaapi  opengl  raw  xshm  none  fb }, default: 0
-#video.driver:auto
+video.driver:vaapi
 
 # Alle Videoskalierungen deaktivieren
 # bool, default: 0
@@ -340,10 +340,6 @@ audio.device.alsa_front_device:default
 # bool, default: 0
 #video.output.vaapi_indirect_render:0
 
-# vaapi: reinit vaapi on every format change. When no reinit is used deinterlaced is turned off.
-# numeric, default: 1
-#video.output.vaapi_reinit:1
-
 # vaapi: VDR osd height workaround.
 # numeric, default: 0
 #video.output.vaapi_vdr_osd_height:0
@@ -355,10 +351,6 @@ audio.device.alsa_front_device:default
 # Vertikale Bildposition im Ausgabefenster
 # [0..100], default: 50
 #video.output.vertical_position:50
-
-# default number of render surfaces
-# numeric, default: 21
-#video.output.vaapi_render_surfaces:21
 
 # Choose speed over specification compliance
 # bool, default: 0

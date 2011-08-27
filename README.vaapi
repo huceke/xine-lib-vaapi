@@ -24,10 +24,6 @@ Video out settings :
 # numeric, default: 0
 video.output.vaapi_deinterlace:2
 
-# vaapi: reinit vaapi on every format change. When no reinit is used deinterlaced is turned off.
-# numeric, default: 1
-#video.output.vaapi_reinit:1
-
 # vaapi: VDR osd height workaround.
 # numeric, default: 0
 #video.output.vaapi_vdr_osd_height:0
@@ -44,10 +40,6 @@ video.output.vaapi_deinterlace:2
 # bool, default: 0
 #video.processing.vaapi_mpeg_sofdec_deinterlace:0
 
-# default number of render surfaces
-# numeric, default: 21
-#video.output.vaapi_render_surfaces:21
-
 # vaapi: opengl output rendering
 # bool, default: 0
 #video.output.vaapi_opengl_render:0
@@ -56,10 +48,6 @@ video.output.vaapi_deinterlace:2
 # bool, default: 0
 #video.output.vaapi_opengl_use_tfp:0
 
-
-It is posible not to use reinit on every format change. The problem is that this does not 
-work relayable. On Intel VAAPI the driver crashes. Therefore deinterlacing is disabled
-when reinit is set to 0.
 
 Notes on use with VDR. The OSD will have some delay. This is technical and can only be overcome
 writting a complete new decoder which use VAAPI direct and not ffmpeg.
@@ -83,18 +71,6 @@ video.processing.vaapi_mpeg_sofdec:1
 This disables VAAPI fpr Mpeg2.
 
 
-If xine ui crashes on startup with h264 streams try to raise the numer of rendering surfaces. Minimum 5 maximum 99.
-
-video.output.vaapi_render_surfaces:21
-
-
-For vdr-xine set in VDR the OSD size to 1920x1080 and use the following in ~/.xine/config :
-
-video.output.vaapi_vdr_osd_height:0
-video.output.vaapi_vdr_osd_width:0
-
-The workaround is needed, because vdr-xine does not report the real unscaled OSD size.
-
 You can use example.config.vaapi as an example config for xine.
 
 Call xine like : xine -V vaapi video.mkv
@@ -105,8 +81,5 @@ export LIBVA_DRIVER_NAME=xvba
 export LIBVA_DRIVERS_PATH=/usr/lib/dri/
 video.output.vaapi_opengl_render:1
 
-
-Known problems :
-xinliboutput doesn't work stable. locking issues.
 
 Postprocessing does not work. Do not use "--post vdr_video --post vdr-audio --post vdr" in your xine call.
