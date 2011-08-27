@@ -1047,8 +1047,6 @@ static void vaapi_close(vaapi_driver_t *this) {
 
   vaTerminate(va_context->va_display);
   va_context->va_display = NULL;
-
-  vaapi_init_va_context(this);
 }
 
 /* Returns internal VAAPI context */
@@ -1283,6 +1281,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   VAStatus            vaStatus;
 
   vaapi_close(this);
+  vaapi_init_va_context(this);
 
   va_context->va_display = vaapi_get_display(this->display, this->opengl_render);
 
@@ -1395,6 +1394,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
 
 error:
   vaapi_close(this);
+  vaapi_init_va_context(this);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : error init vaapi\n");
 
   return VA_STATUS_ERROR_UNKNOWN;
@@ -2367,7 +2367,7 @@ static void vaapi_get_property_min_max (vo_driver_t *this_gen,
 
 static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 				 int data_type, void *data) {
-  vaapi_driver_t     *this        = (vaapi_driver_t *) this_gen;
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
 
   switch (data_type) {
 #ifndef XINE_DISABLE_DEPRECATED_FEATURES
@@ -2450,7 +2450,6 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
   XLockDisplay(this->display);
 
   vaapi_close(this);
-
   free(va_context);
 
   XUnlockDisplay(this->display);
