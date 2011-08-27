@@ -1314,7 +1314,7 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
   VADisplayAttribute attr;
   memset( &attr, 0, sizeof(attr) );
   attr.type  = VADisplayAttribBackgroundColor;
-  attr.value = 0xFF;
+  attr.value = 0x00000000;
   vaSetDisplayAttributes(va_context->va_display, &attr, 1);
 
   va_context->width = width;
