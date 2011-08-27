@@ -1031,9 +1031,7 @@ static void vaapi_close(vaapi_driver_t *this) {
 
   for(i = 0; i < RENDER_SURFACES; i++) {
     destroy_image((vo_driver_t *)this, &va_output_image[i]);
-  }
 
-  for(i = 0; i < RENDER_SURFACES; i++) {
     if(va_surface_ids[i] != VA_INVALID_SURFACE) {
 #ifdef DEBUG_SURFACE
       printf("vaapi_close destroy render surface 0x%08x\n", va_surface_ids[i]);
@@ -2108,6 +2106,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   /* reinit of the rendering was triggered */
   if(this->reinit_rendering) {
     destroy_glx(this_gen);
+
+    //vaapi_init_internal(frame_gen->driver, va_context->va_profile, va_context->width, va_context->height, va_context->softrender);
 
     if(this->opengl_render && this->valid_context)
       vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
