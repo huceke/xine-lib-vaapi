@@ -196,6 +196,7 @@ struct vaapi_driver_s {
   unsigned int        last_height;
   unsigned int        last_width;
   unsigned int        reinit_rendering;
+  unsigned int        hw_render;
 };
 
 VASurfaceID         *va_surface_ids = NULL;
@@ -1402,6 +1403,19 @@ error:
   return VA_STATUS_ERROR_UNKNOWN;
 }
 
+static void vaapi_hwdecode(vo_frame_t *frame_gen, int hwdecode) {
+  vo_driver_t *this_gen = (vo_driver_t *) frame_gen->driver;
+  vaapi_driver_t *this  = (vaapi_driver_t *) this_gen;
+
+  pthread_mutex_lock(&this->vaapi_lock);
+  XLockDisplay(this->display);
+
+  this->hw_render = 0;
+
+  XUnlockDisplay(this->display);
+  pthread_mutex_unlock(&this->vaapi_lock);
+}
+
 /* Init VAAPI. This function is called from the decoder side.
  * When the decoder uses software decoding vaapi_init is not called.
  * Therefore we do it in vaapi_display_frame to get a valid VAAPI context too.*/
@@ -1415,6 +1429,7 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
   XLockDisplay(this->display);
 
   vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softrender);
+  this->hw_render = 1;
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
@@ -1474,6 +1489,7 @@ static vo_frame_t *vaapi_alloc_frame (vo_driver_t *this_gen) {
 
   frame->vaapi_accel_data.vo_frame                  = &frame->vo_frame;
   frame->vaapi_accel_data.vaapi_init                = &vaapi_init;
+  frame->vaapi_accel_data.vaapi_hwdecode            = &vaapi_hwdecode;
   frame->vaapi_accel_data.profile_from_imgfmt       = &profile_from_imgfmt;
   frame->vaapi_accel_data.get_context               = &get_context;
 
@@ -2095,7 +2111,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  if(!this->valid_context && (this->last_width == frame->width && this->last_height == frame->height ) ) {
+  if(!this->valid_context && (this->last_width == frame->width && this->last_height == frame->height ) && !this->hw_render) {
     printf("vaapi_display_frame %s height %d width %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->height, frame->width);
@@ -2658,6 +2674,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     return NULL;
   }
   //vaapi_close(this);
+  this->hw_render = 0;
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);

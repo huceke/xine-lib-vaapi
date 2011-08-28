@@ -91,6 +91,7 @@ typedef struct {
   VAImage                   *va_output_image;
 
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softrender);
+  void (*vaapi_hwdecode)(vo_frame_t *frame_gen, int hwdecode);
   int (*profile_from_imgfmt)(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec);
   ff_vaapi_context_t *(*get_context)(vo_frame_t *frame_gen);
 } vaapi_accel_t;
