@@ -188,6 +188,7 @@ struct vaapi_driver_s {
 
   int                  num_frame_buffers;
   vaapi_frame_t       *frames[RENDER_SURFACES];
+  vaapi_frame_t       *cur_frame;
 
   pthread_mutex_t     vaapi_lock;
 
@@ -1005,6 +1006,7 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_context_id             = VA_INVALID_ID;
   va_context->va_profile                = 0;
   this->valid_context                   = 0;
+  this->cur_frame                       = NULL;
   va_context->is_bound                  = 0;
   va_context->gl_surface                = NULL;
   va_context->va_osd_associated         = 0;
@@ -1907,33 +1909,51 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
 
-  _x_vo_scale_compute_ideal_size( &this->sc );
+  int ret = 0;
 
-  if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
-    _x_vo_scale_compute_output_size( &this->sc );
+  if(this->cur_frame) {
 
-    int width = this->sc.gui_width;
-    int height = this->sc.gui_height;
+    /*
+     * tell gui that we are about to display a frame,
+     * ask for offset and output size
+     */
+    this->sc.delivered_height = this->cur_frame->height;
+    this->sc.delivered_width  = this->cur_frame->width;
+    this->sc.delivered_ratio  = this->cur_frame->ratio;
+    this->sc.crop_left        = this->cur_frame->vo_frame.crop_left;
+    this->sc.crop_right       = this->cur_frame->vo_frame.crop_right;
+    this->sc.crop_top         = this->cur_frame->vo_frame.crop_top;
+    this->sc.crop_bottom      = this->cur_frame->vo_frame.crop_bottom;
 
-    if(this->opengl_render && this->valid_opengl_context) {
-      glViewport(0, 0, width, height);
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
-      gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
-      glMatrixMode(GL_MODELVIEW);
-      glLoadIdentity();
-      glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
-      glScalef(1.0f / (GLfloat)width, 
-               -1.0f / (GLfloat)height,
-               1.0f / (GLfloat)width);
-      glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
+    _x_vo_scale_compute_ideal_size( &this->sc );
+
+    if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
+      _x_vo_scale_compute_output_size( &this->sc );
+
+      int width = this->sc.gui_width;
+      int height = this->sc.gui_height;
+
+      if(this->opengl_render && this->valid_opengl_context) {
+        glViewport(0, 0, width, height);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
+        glScalef(1.0f / (GLfloat)width, 
+                 -1.0f / (GLfloat)height,
+                 1.0f / (GLfloat)width);
+        glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
+      }
+  
     }
-
-    return 1;
+    ret = 1;
+  } else {
+    ret = 1;
   }
 
-  
-  return 0;
+  return ret;
 }
 
 static void vaapi_update_frame_format (vo_driver_t *this_gen,
@@ -1974,12 +1994,36 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
       frame->vo_frame.base[1] = av_mallocz (frame->vo_frame.pitches[1] * ((height+1)/2));
       frame->vo_frame.base[2] = av_mallocz (frame->vo_frame.pitches[2] * ((height+1)/2));
+
+      if(this->last_format != format) {
+        this->last_format = format;
+        this->last_height = height;
+        this->last_width  = width;
+        this->valid_context = 0;
+        lprintf("XINE_IMGFMT_YV12 width %d height %d\n", width, height);
+      }
+
     } else if (format == XINE_IMGFMT_YUY2){
       frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
+
+      if(this->last_format != format) {
+        this->last_format = format;
+        this->last_height = height;
+        this->last_width  = width;
+        this->valid_context = 0;
+        lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
+      }
+
     } else {
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
+
+      this->last_format = format;
+      this->last_height = height;
+      this->last_width  = width;
+      lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
+
     }
 
     frame->width  = width;
@@ -1987,22 +2031,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     frame->format = format;
     frame->flags  = flags;
     vaapi_frame_field ((vo_frame_t *)frame, flags);
-  }
-
-
-  if( this->last_format != format || this->last_height != height || this->last_width != width) {
-
-    lprintf("vaapi_update_frame_format %s height %d width %d\n", 
-        (format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
-        height, width);
-
-    this->last_format = format;
-    this->last_height = height;
-    this->last_width  = width;
-
-    if(format == XINE_IMGFMT_YV12 || format == XINE_IMGFMT_YUY2)
-      this->valid_context = 0;
-
   }
 
   XUnlockDisplay(this->display);
@@ -2046,6 +2074,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   lprintf("vaapi_display_frame\n");
 
+  this->cur_frame = frame;
+
   /*
    * let's see if this frame is different in size / aspect
    * ratio from the previous one
@@ -2062,23 +2092,11 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     this->sc.force_redraw = 1;
   }
 
-  /*
-   * tell gui that we are about to display a frame,
-   * ask for offset and output size
-   */
-  this->sc.delivered_height = frame->height;
-  this->sc.delivered_width  = frame->width;
-  this->sc.delivered_ratio  = frame->ratio;
-  this->sc.crop_left        = frame->vo_frame.crop_left;
-  this->sc.crop_right       = frame->vo_frame.crop_right;
-  this->sc.crop_top         = frame->vo_frame.crop_top;
-  this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
-
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
   if(!this->valid_context && (this->last_width == frame->width && this->last_height == frame->height ) ) {
-    lprintf("vaapi_display_frame %s height %d width %d\n", 
+    printf("vaapi_display_frame %s height %d width %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->height, frame->width);
 
@@ -2105,6 +2123,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   /* reinit of the rendering was triggered */
   if(this->reinit_rendering) {
+    int osd_displayed = this->osd_displayed;
+
     destroy_glx(this_gen);
 
     //vaapi_init_internal(frame_gen->driver, va_context->va_profile, va_context->width, va_context->height, va_context->softrender);
@@ -2162,11 +2182,13 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
       lprintf("vaapi_display_frame: 0x%08x %d %d\n", va_surface_id, va_context->width, va_context->height);
     
+      vaSyncSurface(va_context->va_display, va_surface_id);
+
       int i = 0;
       int interlaced_frame    = !frame->vo_frame.progressive_frame;
       int top_field_first     = frame->vo_frame.top_field_first;
 
-      if((frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12) && va_image != NULL) {
+      if((frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12) && va_image != NULL && va_image->image_id != VA_INVALID_ID) {
 
         lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x\n", va_surface_id, va_image->image_id);
 
@@ -2367,7 +2389,8 @@ static void vaapi_get_property_min_max (vo_driver_t *this_gen,
 
 static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 				 int data_type, void *data) {
-  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  vaapi_driver_t     *this       = (vaapi_driver_t *) this_gen;
+  //ff_vaapi_context_t *va_context = this->va_context;
 
   switch (data_type) {
 #ifndef XINE_DISABLE_DEPRECATED_FEATURES
@@ -2376,28 +2399,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 #endif
 
   case XINE_GUI_SEND_EXPOSE_EVENT: {
-    XExposeEvent * xev = (XExposeEvent *) data;
-    if (xev && xev->count == 0) {
-      pthread_mutex_lock(&this->vaapi_lock);
-      XLockDisplay( this->display );
-      XSync(this->display, False);
-      XUnlockDisplay( this->display );
-      pthread_mutex_unlock(&this->vaapi_lock);
-      this->sc.force_redraw = 1;
-    }
-  }
-  break;
-
-  case XINE_GUI_SEND_WILL_DESTROY_DRAWABLE: {
-    pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay( this->display );
-    lprintf("XINE_GUI_SEND_WILL_DESTROY_DRAWABLE\n");
-
-    this->reinit_rendering = 1;
-    destroy_glx(this_gen);
-
-    XUnlockDisplay( this->display );
-    pthread_mutex_unlock(&this->vaapi_lock);
+    lprintf("XINE_GUI_SEND_EXPOSE_EVENT:\n");
   }
   break;
 
@@ -2411,10 +2413,25 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 
     this->drawable = (Drawable) data;
 
+    /*
+    int i;
+    for(i = 0; i < RENDER_SURFACES; i++) {
+      
+      if(va_surface_ids[i] != VA_INVALID_SURFACE)
+        vaSyncSurface(va_context->va_display, va_surface_ids[i]);
+
+    }
+
+    vaapi_close(this);
+    vaapi_init_internal(this_gen, va_context->va_profile, va_context->width, va_context->height, va_context->softrender);
+
+    XSync(this->display, False);
+    */
+
     XUnlockDisplay( this->display );
     pthread_mutex_unlock(&this->vaapi_lock);
+    this->sc.force_redraw = 1;
   }
-
   break;
 
   case XINE_GUI_SEND_TRANSLATE_GUI_TO_VIDEO: {
@@ -2614,6 +2631,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->last_height                    = 0;
   this->last_width                     = 0;
   this->reinit_rendering               = 0;
+  this->cur_frame                      = NULL;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
         _("vaapi: VDR osd width workaround."),
@@ -2639,7 +2657,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     vaapi_dispose((vo_driver_t *)this);
     return NULL;
   }
-  //vaapi_close(this);
+  vaapi_close(this);
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
