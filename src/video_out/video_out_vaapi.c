@@ -193,9 +193,11 @@ struct vaapi_driver_s {
 
   pthread_mutex_t     vaapi_lock;
 
+  /*
   unsigned int        last_format;
   unsigned int        last_height;
   unsigned int        last_width;
+  */
   unsigned int        reinit_rendering;
   unsigned int        hw_render;
 };
@@ -1008,7 +1010,6 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_config_id              = VA_INVALID_ID;
   va_context->va_context_id             = VA_INVALID_ID;
   va_context->va_profile                = 0;
-  this->valid_context                   = 0;
   this->cur_frame                       = NULL;
   va_context->is_bound                  = 0;
   va_context->gl_surface                = NULL;
@@ -1422,6 +1423,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
 error:
   vaapi_close(this);
   vaapi_init_va_context(this);
+  this->valid_context = 0;
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : error init vaapi\n");
 
   return VA_STATUS_ERROR_UNKNOWN;
@@ -2039,36 +2041,34 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
       frame->vo_frame.base[1] = av_mallocz (frame->vo_frame.pitches[1] * ((height+1)/2));
       frame->vo_frame.base[2] = av_mallocz (frame->vo_frame.pitches[2] * ((height+1)/2));
-
+      /*
       if(this->last_format != format) {
         this->last_format = format;
         this->last_height = height;
         this->last_width  = width;
-        this->valid_context = 0;
-        lprintf("XINE_IMGFMT_YV12 width %d height %d\n", width, height);
       }
-
+      */
+      lprintf("XINE_IMGFMT_YV12 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_YUY2){
       frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height);
-
+      /*
       if(this->last_format != format) {
         this->last_format = format;
         this->last_height = height;
         this->last_width  = width;
-        this->valid_context = 0;
-        lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
       }
-
+      */
+      lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
     } else {
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
-
+      /*
       this->last_format = format;
       this->last_height = height;
       this->last_width  = width;
+      */
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
-
     }
 
     frame->width  = width;
@@ -2097,6 +2097,9 @@ static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *
     return VA_STATUS_ERROR_UNKNOWN;
 
   lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x width %d height %d\n", va_surface_id, va_image->image_id, va_image->width, va_image->height);
+
+  if(va_context->width != va_image->width || va_context->height != va_image->height)
+    return VA_STATUS_SUCCESS;
 
   vaStatus = vaMapBuffer( va_context->va_display, va_image->buf, &p_base_dst ) ;
 
@@ -2266,12 +2269,15 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  if(!this->valid_context && (this->last_width == frame->width && this->last_height == frame->height ) && !this->hw_render) {
-    printf("vaapi_display_frame %s height %d width %d\n", 
+  //if(!this->hw_render && (frame->width != va_context->width || frame->height != va_context->height || !this->valid_context)) {
+  if(!this->hw_render && (frame->width != va_context->width || frame->height != va_context->height || !this->valid_context)) {
+    printf("vaapi_display_frame %s width %d height %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
-        frame->height, frame->width);
+        frame->width, frame->height);
 
+    // TODO: deassociate overlay and assiciate it again
     vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    this->valid_context = 1;
     this->sc.force_redraw = 1;
   }
 
@@ -2296,9 +2302,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   if(this->reinit_rendering) {
     int osd_displayed = this->osd_displayed;
 
+    // TODO: deassociate overlay and assiciate it again
     destroy_glx(this_gen);
-
-    //vaapi_init_internal(frame_gen->driver, va_context->va_profile, va_context->width, va_context->height, va_context->softrender);
 
     if(this->opengl_render && this->valid_context)
       vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
@@ -2332,7 +2337,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       va_context->sw_width  = va_image->width;
       va_context->sw_height = va_image->height;
     }
-
 
     VASurfaceStatus surf_status = 0;
     if(va_surface_id != VA_INVALID_SURFACE) {
@@ -2370,7 +2374,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
     }
   } else {
-   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format 0x%08x\n", frame->format);
+    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format %s width %d height %d valid_context %d hwrender %d\n", 
+        (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
+        frame->width, frame->height, this->valid_context, this->hw_render);
   }
 
   XSync(this->display, False);
@@ -2711,11 +2717,14 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->deinterlace                    = 0;
   this->vdr_osd_width                  = 0;
   this->vdr_osd_height                 = 0;
+  /*
   this->last_format                    = 0;
   this->last_height                    = 0;
   this->last_width                     = 0;
+  */
   this->reinit_rendering               = 0;
   this->cur_frame                      = NULL;
+  this->valid_context                  = 0;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
         _("vaapi: VDR osd width workaround."),
@@ -2742,6 +2751,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     return NULL;
   }
   vaapi_close(this);
+  this->valid_context = 0;
   this->hw_render = 0;
 
   XUnlockDisplay(this->display);
