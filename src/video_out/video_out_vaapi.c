@@ -1573,28 +1573,35 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
       unsigned int output_width = va_context->width;
       unsigned int output_height = va_context->height;
 
+      /*
       if(!this->vdr_osd_width && !this->vdr_osd_height) {
         flags |= VA_SUBPICTURE_DESTINATION_IS_SCREEN_COORD;
         output_width = this->sc.gui_width;
         output_height = this->sc.gui_height;
       }
+      */
 
       lprintf( "vaapi overlay: va_context->va_subpic_image.width %d va_context->va_subpic_image.height %d this->overlay_bitmap_height %d this->overlay_bitmap_width %d\n", va_context->va_subpic_image.width, va_context->va_subpic_image.height, this->overlay_bitmap_width, this->overlay_bitmap_height);
 
       if(va_context->softsurface) {
-        vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                va_output_surface_ids, OUTPUT_SURFACES,
-                0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
-                0, 0, output_width, output_height, flags);
+        vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+                                va_output_surface_ids, OUTPUT_SURFACES,
+                                0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
+                                0, 0, output_width, output_height, flags);
       } else {
-        vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                va_surface_ids, RENDER_SURFACES,
-                0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
-                0, 0, output_width, output_height, flags);
+        vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+                                va_surface_ids, RENDER_SURFACES,
+                                0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
+                                0, 0, output_width, output_height, flags);
       }
-
-      this->osd_displayed = 1;
-      va_context->va_osd_associated = 1;
+      if(vaapi_check_status(this_gen, vaStatus, "vaAssociateSubpicture()")) {
+        this->osd_displayed = 1;
+        va_context->va_osd_associated = 1;
+      }
+      else {
+        this->osd_displayed = 0;
+        va_context->va_osd_associated = 0;
+      }
     }
     return 1;
   }
