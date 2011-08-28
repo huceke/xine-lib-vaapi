@@ -1481,8 +1481,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
   vaapi_frame_t   *frame = (vaapi_frame_t*)frame_gen;
 
-  lprintf("vaapi_update_frame_format srfc 0x%08x\n", accel->va_surfaceid);
-
   XLockDisplay(this->display);
 
   frame->vo_frame.width = width;
