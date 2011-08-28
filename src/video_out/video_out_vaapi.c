@@ -2657,7 +2657,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     vaapi_dispose((vo_driver_t *)this);
     return NULL;
   }
-  vaapi_close(this);
+  //vaapi_close(this);
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
