@@ -2075,7 +2075,7 @@ static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *
   vaapi_driver_t     *this          = (vaapi_driver_t *) this_gen;
   vaapi_frame_t      *frame         = (vaapi_frame_t *) frame_gen;
   ff_vaapi_context_t *va_context    = this->va_context;
-  void               *p_base_dst    = NULL;
+  void               *p_base        = NULL;
   VAStatus           vaStatus; 
 
   if(va_image == NULL || va_image->image_id == VA_INVALID_ID || va_surface_id == VA_INVALID_SURFACE || !this->valid_context)
@@ -2086,11 +2086,15 @@ static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *
   if(va_context->width != va_image->width || va_context->height != va_image->height)
     return VA_STATUS_SUCCESS;
 
-  vaStatus = vaMapBuffer( va_context->va_display, va_image->buf, &p_base_dst ) ;
+  vaStatus = vaMapBuffer( va_context->va_display, va_image->buf, &p_base ) ;
 
   if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()"))
     return vaStatus;
 
+  memset((uint8_t*)p_base + va_image->offsets[0],   0, va_image->pitches[0] * va_image->height);
+  memset((uint8_t*)p_base + va_image->offsets[1], 128, va_image->pitches[1] * ((va_image->height+1)/2));
+  memset((uint8_t*)p_base + va_image->offsets[2], 128, va_image->pitches[2] * ((va_image->height+1)/2));
+ 
   /* Copy xine frames into VAAPI images */
   if(frame->format == XINE_IMGFMT_YV12) {
 
@@ -2099,13 +2103,13 @@ static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *
     yv12_to_yv12(
       /* Y */
         frame_gen->base[0], frame_gen->pitches[0],
-        (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
+        (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
       /* U */
         frame_gen->base[1], frame_gen->pitches[1],
-        (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
+        (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
       /* V */
         frame_gen->base[2], frame_gen->pitches[2],
-        (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
+        (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
       /* width x height */
         frame_gen->width, frame_gen->height);
 
@@ -2114,9 +2118,9 @@ static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *
     lprintf("softrender yuy2_to_yv12 convert\n");
 
     yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
-           (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
-           (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
-           (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
+           (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
+           (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
+           (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
            frame_gen->width, frame_gen->height);
 
   }
@@ -2233,6 +2237,12 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   lprintf("vaapi_display_frame\n");
 
+  if(frame->height < 17 && frame->width < 17) {
+    frame->vo_frame.free( frame_gen );
+    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " frame size to small width %d height %d\n", frame->height, frame->width);
+    return;
+  }
+
   this->cur_frame = frame;
 
   /*
@@ -2261,19 +2271,17 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
         frame->width, frame->height);
 
     // TODO: deassociate overlay and assiciate it again
-    if(frame->height > 16 && frame->width >16) {
-      int osd_displayed = this->osd_displayed;
+    int osd_displayed = this->osd_displayed;
 
-      if(osd_displayed)
-        vaapi_ovl_associate(frame_gen->driver, 0);
+    if(osd_displayed)
+      vaapi_ovl_associate(frame_gen->driver, 0);
 
-      vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
-      this->valid_context = 1;
-      this->sc.force_redraw = 1;
+    vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    this->valid_context = 1;
+    this->sc.force_redraw = 1;
 
-      if(osd_displayed)
-        vaapi_ovl_associate(frame_gen->driver, 1);
-    }
+    if(osd_displayed)
+      vaapi_ovl_associate(frame_gen->driver, 1);
   }
 
   XUnlockDisplay(this->display);
