@@ -2056,6 +2056,137 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
   frame->vo_frame.future_frame = NULL;
 }
 
+static VAStatus vaapi_software_render_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen, 
+                                             VAImage *va_image, VASurfaceID va_surface_id) {
+  vaapi_driver_t     *this          = (vaapi_driver_t *) this_gen;
+  vaapi_frame_t      *frame         = (vaapi_frame_t *) frame_gen;
+  ff_vaapi_context_t *va_context    = this->va_context;
+  void               *p_base_dst    = NULL;
+  VAStatus           vaStatus; 
+
+  if(va_image == NULL || va_image->image_id == VA_INVALID_ID || va_surface_id == VA_INVALID_SURFACE || !this->valid_context)
+    return VA_STATUS_ERROR_UNKNOWN;
+
+  lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x width %d height %d\n", va_surface_id, va_image->image_id, va_image->width, va_image->height);
+
+  vaStatus = vaMapBuffer( va_context->va_display, va_image->buf, &p_base_dst ) ;
+
+  if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()"))
+    return vaStatus;
+
+    /* Copy xine frames into VAAPI images */
+  if(frame->format == XINE_IMGFMT_YV12) {
+
+    lprintf("softrender yv12_to_yv12 convert\n");
+
+    yv12_to_yv12(
+      /* Y */
+        frame_gen->base[0], frame_gen->pitches[0],
+        (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
+      /* U */
+        frame_gen->base[1], frame_gen->pitches[1],
+        (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
+      /* V */
+        frame_gen->base[2], frame_gen->pitches[2],
+        (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
+      /* width x height */
+        frame_gen->width, frame_gen->height);
+
+  } else if (frame->format == XINE_IMGFMT_YUY2) {
+
+    lprintf("softrender yuy2_to_yv12 convert\n");
+
+    yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
+           (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
+           (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
+           (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
+           frame_gen->width, frame_gen->height);
+
+  }
+
+  vaUnmapBuffer(va_context->va_display, va_image->buf);
+
+  if(!va_context->is_bound) {
+    vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
+               0, 0, va_image->width, va_image->height,
+               0, 0, va_image->width, va_image->height);
+    if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
+      return vaStatus;
+  }
+
+  return VA_STATUS_SUCCESS;
+}
+
+static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen, 
+                                             VASurfaceID va_surface_id) {
+  vaapi_driver_t     *this            = (vaapi_driver_t *) this_gen;
+  vaapi_frame_t      *frame           = (vaapi_frame_t *) frame_gen;
+  ff_vaapi_context_t *va_context      = this->va_context;
+  VAStatus           vaStatus         = VA_STATUS_ERROR_UNKNOWN; 
+  int                i                = 0;
+  int                interlaced_frame = !frame->vo_frame.progressive_frame;
+  int                top_field_first  = frame->vo_frame.top_field_first;
+  int                width, height;
+
+  //if(frame->format == XINE_IMGFMT_VAAPI) {
+    width  = va_context->width;
+    height = va_context->height;
+  //} else {
+  //  width  = va_context->sw_width;
+  //  height = va_context->sw_height;
+  //}
+
+  if(!this->valid_context || va_surface_id == VA_INVALID_SURFACE)
+    return VA_STATUS_ERROR_UNKNOWN;
+
+  if(this->opengl_render && !this->valid_opengl_context)
+    return VA_STATUS_ERROR_UNKNOWN;
+
+  /* Final VAAPI rendering. The deinterlacing can be controled by xine config.*/
+  unsigned int deint = this->deinterlace;
+  for(i = 0; i <= !!((deint > 1) && interlaced_frame); i++) {
+    unsigned int flags = (deint && (interlaced_frame) ? (((!!(top_field_first)) ^ i) == 0 ? VA_BOTTOM_FIELD : VA_TOP_FIELD) : VA_FRAME_PICTURE);
+
+    lprintf("Putsrfc srfc 0x%08X flags 0x%08x %dx%d -> %dx%d interlaced %d top_field_first %d\n", 
+            va_surface_id, flags, width, height, 
+            this->sc.output_width, this->sc.output_height,
+            interlaced_frame, top_field_first);
+
+    if(this->opengl_render) {
+
+      vaapi_x11_trap_errors();
+
+      if(this->opengl_use_tfp) {
+        lprintf("opengl render tfp\n");
+        vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->gl_image_pixmap,
+                 0, 0, width, height, 0, 0, width, height, NULL, 0, flags);
+        if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
+          return vaStatus;
+      } else {
+        lprintf("opengl render\n");
+        vaStatus = vaCopySurfaceGLX(va_context->va_display, va_context->gl_surface, va_surface_id, flags);
+        if(!vaapi_check_status(this_gen, vaStatus, "vaCopySurfaceGLX()"))
+          return vaStatus;
+      }
+      if(vaapi_x11_untrap_errors())
+        return VA_STATUS_ERROR_UNKNOWN;
+      
+      vaapi_glx_flip_page(frame_gen, 0, 0, va_context->width, va_context->height);
+
+    } else {
+
+      vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->drawable,
+                   0, 0, width, height,
+                   this->sc.output_xoffset, this->sc.output_yoffset,
+                   this->sc.output_width, this->sc.output_height,
+                   NULL, 0, flags);
+      if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
+        return vaStatus;
+    }
+  }
+  return VA_STATUS_SUCCESS;
+}
+
 /* Used in vaapi_display_frame to determine how long displaying a frame takes
    - if slower than 60fps, print a message
 */
@@ -2200,109 +2331,12 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     
       vaSyncSurface(va_context->va_display, va_surface_id);
 
-      int i = 0;
-      int interlaced_frame    = !frame->vo_frame.progressive_frame;
-      int top_field_first     = frame->vo_frame.top_field_first;
+      /* transfer image data to a VAAPI surface */
+      if((frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12))
+        vaapi_software_render_frame(this_gen, frame_gen, va_image, va_surface_id);
 
-      if((frame->format == XINE_IMGFMT_YUY2 || frame->format == XINE_IMGFMT_YV12) && va_image != NULL && va_image->image_id != VA_INVALID_ID) {
+      vaapi_hardware_render_frame(this_gen, frame_gen, va_surface_id);
 
-        lprintf("imageconvert : va_surface_id 0x%08x va_image.image_id 0x%08x\n", va_surface_id, va_image->image_id);
-
-        vaStatusDst = vaMapBuffer( va_context->va_display, va_image->buf, &p_base_dst ) ;
-
-        if(vaapi_check_status(this_gen, vaStatusDst, "vaMapBuffer()")) {
-
-          /* Copy xine frames into VAAPI images */
-          if(frame->format == XINE_IMGFMT_YV12) {
-
-            lprintf("softrender yv12_to_yv12 convert\n");
-
-            yv12_to_yv12(
-              /* Y */
-                frame_gen->base[0], frame_gen->pitches[0],
-                (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
-              /* U */
-                frame_gen->base[1], frame_gen->pitches[1],
-                (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
-              /* V */
-                frame_gen->base[2], frame_gen->pitches[2],
-                (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
-              /* width x height */
-                frame_gen->width, frame_gen->height);
-
-          } else if (frame->format == XINE_IMGFMT_YUY2) {
-
-            lprintf("softrender yuy2_to_yv12 convert\n");
-
-            yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
-                   (uint8_t*)p_base_dst + va_image->offsets[0], va_image->pitches[0],
-                   (uint8_t*)p_base_dst + va_image->offsets[2], va_image->pitches[2],
-                   (uint8_t*)p_base_dst + va_image->offsets[1], va_image->pitches[1],
-                   frame_gen->width, frame_gen->height);
-
-          }
-
-          vaUnmapBuffer(va_context->va_display, va_image->buf);
-
-          if(!va_context->is_bound) {
-            vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
-                       0, 0, va_image->width, va_image->height,
-                       0, 0, va_image->width, va_image->height);
-            vaapi_check_status(this_gen, vaStatus, "vaPutSurface()");
-          }
-
-          va_height = va_image->height;
-          va_width  = va_image->width;
-
-        }
-      }
-
-      /* Final VAAPI rendering. The deinterlacing can be controled by xine config.*/
-      unsigned int deint = (va_context->softrender) ? 0 : this->deinterlace;
-      for(i = 0; i <= !!((deint > 1) && interlaced_frame); i++) {
-        unsigned int flags = (deint && (interlaced_frame) ? (((!!(top_field_first)) ^ i) == 0 ? VA_BOTTOM_FIELD : VA_TOP_FIELD) : VA_FRAME_PICTURE);
-
-        //flags |= VA_FILTER_SCALING_HQ;
-
-        lprintf("Putsrfc srfc 0x%08X flags 0x%08x %dx%d -> %dx%d interlaced %d top_field_first %d\n", 
-                va_surface_id, flags, va_width, va_height, 
-                this->sc.output_width, this->sc.output_height,
-                interlaced_frame, top_field_first);
-
-        if(this->opengl_render) {
-
-          vaapi_x11_trap_errors();
-
-          if(this->opengl_use_tfp) {
-            lprintf("opengl render tfp\n");
-            vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->gl_image_pixmap,
-                     0, 0, va_width, va_height, 0, 0, va_width, va_height, NULL, 0, flags);
-            if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
-              break;
-          } else {
-            lprintf("opengl render\n");
-            vaStatus = vaCopySurfaceGLX(va_context->va_display, va_context->gl_surface, va_surface_id, flags);
-            if(!vaapi_check_status(this_gen, vaStatus, "vaCopySurfaceGLX()"))
-              break;
-          }
-
-          if(!vaapi_x11_untrap_errors())
-            vaapi_glx_flip_page(frame_gen, 0, 0, va_context->width, va_context->height);
-
-        } else {
-
-          vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->drawable,
-                   0, 0, va_width, va_height,
-                   this->sc.output_xoffset, this->sc.output_yoffset,
-                   this->sc.output_width, this->sc.output_height,
-                   NULL, 0, flags);
-          if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
-            break;
-        }
-
-      }
-
-      //vaSyncSurface(va_context->va_display, va_surface_id);
     }
   } else {
    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format 0x%08x\n", frame->format);
