@@ -73,6 +73,8 @@ struct ff_vaapi_context_s {
   VAConfigID        va_config_id;
   int               width;
   int               height;
+  int               sw_width;
+  int               sw_height;
   int               va_profile;
   VAImage           va_subpic_image;
   VASubpictureID    va_subpic_id;
@@ -82,13 +84,13 @@ struct ff_vaapi_context_s {
   int               is_bound;
   void              *gl_surface;
   int               va_osd_associated;
+  unsigned int      soft_head;
   struct vaapi_equalizer va_equalizer;
 };
 
 typedef struct {
   vo_frame_t                *vo_frame;
   VASurfaceID               va_surface_id;
-  VAImage                   *va_output_image;
 
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softrender);
   void (*vaapi_hwdecode)(vo_frame_t *frame_gen, int hwdecode);
