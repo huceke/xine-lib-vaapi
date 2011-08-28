@@ -207,7 +207,7 @@ VASurfaceID         *va_soft_surface_ids = NULL;
 VAImage             *va_soft_images = NULL;
 
 static void vaapi_destroy_subpicture(vo_driver_t *this_gen);
-static void destroy_image(vo_driver_t *this_gen, VAImage *va_image);
+static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image);
 static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow);
 
 void (GLAPIENTRY *mpglGenTextures)(GLsizei, GLuint *);
@@ -1049,7 +1049,7 @@ static void vaapi_close(vaapi_driver_t *this) {
   }
 
   for(i = 0; i < SOFT_SURFACES; i++) {
-    destroy_image((vo_driver_t *)this, &va_soft_images[i]);
+    vaapi_destroy_image((vo_driver_t *)this, &va_soft_images[i]);
 
     if(va_soft_surface_ids[i] != VA_INVALID_SURFACE) {
 #ifdef DEBUG_SURFACE
@@ -1076,12 +1076,12 @@ static ff_vaapi_context_t *get_context(vo_frame_t *frame_gen) {
 }
 
 /* Free allocated VAAPI image */
-static void destroy_image(vo_driver_t *this_gen, VAImage *va_image) {
+static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image) {
   vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
 
   if(va_image->image_id != VA_INVALID_ID) {
-    lprintf("destroy_image 0x%08x\n", va_image->image_id);
+    lprintf("vaapi_destroy_image 0x%08x\n", va_image->image_id);
     vaDestroyImage(va_context->va_display, va_image->image_id);
   }
   va_image->image_id = VA_INVALID_ID;
@@ -1144,9 +1144,7 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
 
 error:
   /* house keeping */
-  if(va_image->image_id != VA_INVALID_ID)
-    destroy_image(this_gen, va_image);
-  va_image->image_id = VA_INVALID_ID;
+  vaapi_destroy_image(this_gen, va_image);
   free(va_p_fmt);
   return VA_STATUS_ERROR_UNKNOWN;
 }
@@ -1164,10 +1162,10 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen) {
     va_context->va_osd_associated = 0;
   }
 
-  destroy_image(this_gen, &va_context->va_subpic_image);
-
   if(va_context->va_subpic_id != VA_INVALID_ID)
     vaDestroySubpicture(va_context->va_display, va_context->va_subpic_id);
+
+  vaapi_destroy_image(this_gen, &va_context->va_subpic_image);
 
   va_context->va_subpic_id = VA_INVALID_ID;
 }
@@ -1227,9 +1225,7 @@ error:
     vaapi_destroy_subpicture(this_gen);
   va_context->va_subpic_id = VA_INVALID_ID;
 
-  if(va_context->va_subpic_image.image_id != VA_INVALID_ID)
-    destroy_image(this_gen, &va_context->va_subpic_image);
-  va_context->va_subpic_image.image_id = VA_INVALID_ID;
+  vaapi_destroy_image(this_gen, &va_context->va_subpic_image);
 
   this->overlay_output_width  = 0;
   this->overlay_output_height = 0;
@@ -1429,7 +1425,7 @@ error:
   return VA_STATUS_ERROR_UNKNOWN;
 }
 
-static void vaapi_hwdecode(vo_frame_t *frame_gen, int hwdecode) {
+static void vaapireset(vo_frame_t *frame_gen, int hwdecode) {
   vo_driver_t *this_gen = (vo_driver_t *) frame_gen->driver;
   vaapi_driver_t *this  = (vaapi_driver_t *) this_gen;
 
@@ -1437,6 +1433,7 @@ static void vaapi_hwdecode(vo_frame_t *frame_gen, int hwdecode) {
   XLockDisplay(this->display);
 
   this->hw_render = 0;
+  this->valid_context = 0;
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
@@ -1515,7 +1512,7 @@ static vo_frame_t *vaapi_alloc_frame (vo_driver_t *this_gen) {
 
   frame->vaapi_accel_data.vo_frame                  = &frame->vo_frame;
   frame->vaapi_accel_data.vaapi_init                = &vaapi_init;
-  frame->vaapi_accel_data.vaapi_hwdecode            = &vaapi_hwdecode;
+  frame->vaapi_accel_data.vaapireset                = &vaapireset;
   frame->vaapi_accel_data.profile_from_imgfmt       = &profile_from_imgfmt;
   frame->vaapi_accel_data.get_context               = &get_context;
 
@@ -1534,16 +1531,8 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
   if(!this->valid_context)
     return 0;
 
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
-
-
   if(!bShow) {
     vaapi_destroy_subpicture(this_gen);
-
-    XUnlockDisplay(this->display);
-    pthread_mutex_unlock(&this->vaapi_lock);
-
     return 1;
   }
   
@@ -1557,10 +1546,6 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
 
     vaStatus = vaapi_create_subpicture(this_gen, this->overlay_bitmap_width, this->overlay_bitmap_height);
     if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_subpicture()")) {
-      
-      XUnlockDisplay(this->display);
-      pthread_mutex_unlock(&this->vaapi_lock);
-
       return 0;
     }
 
@@ -1573,10 +1558,6 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
     vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
 
     if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()")) {
-
-      XUnlockDisplay(this->display);
-      pthread_mutex_unlock(&this->vaapi_lock);
-
       return 0;
     }
 
@@ -1603,17 +1584,9 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
     if(vaapi_check_status(this_gen, vaStatus, "vaAssociateSubpicture()")) {
       this->osd_displayed = 1;
       va_context->va_osd_associated = 1;
-
-      XUnlockDisplay(this->display);
-      pthread_mutex_unlock(&this->vaapi_lock);
-
       return 1;
     }
   }
-
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
-
   return 0;
 }
 
@@ -1652,7 +1625,13 @@ static void vaapi_overlay_begin (vo_driver_t *this_gen,
   this->osd_displayed = 0;
   /* Apply OSD layer. */
   if(this->valid_context) {
+    pthread_mutex_lock(&this->vaapi_lock);
+    XLockDisplay(this->display);
+
     vaapi_ovl_associate(frame_gen->driver, this->has_overlay);
+
+    XUnlockDisplay(this->display);
+    pthread_mutex_unlock(&this->vaapi_lock);
   }
 }
 
@@ -1949,7 +1928,13 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   lprintf("this->has_overlay %d\n", this->has_overlay);
   /* Apply OSD layer. */
   if(this->valid_context) {
+    pthread_mutex_lock(&this->vaapi_lock);
+    XLockDisplay(this->display);
+
     vaapi_ovl_associate(frame_gen->driver, this->has_overlay);
+
+    XUnlockDisplay(this->display);
+    pthread_mutex_unlock(&this->vaapi_lock);
   }
 }
 
@@ -2276,9 +2261,19 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
         frame->width, frame->height);
 
     // TODO: deassociate overlay and assiciate it again
-    vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
-    this->valid_context = 1;
-    this->sc.force_redraw = 1;
+    if(frame->height > 16 && frame->width >16) {
+      int osd_displayed = this->osd_displayed;
+
+      if(osd_displayed)
+        vaapi_ovl_associate(frame_gen->driver, 0);
+
+      vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+      this->valid_context = 1;
+      this->sc.force_redraw = 1;
+
+      if(osd_displayed)
+        vaapi_ovl_associate(frame_gen->driver, 1);
+    }
   }
 
   XUnlockDisplay(this->display);
@@ -2302,11 +2297,16 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   if(this->reinit_rendering) {
     int osd_displayed = this->osd_displayed;
 
-    // TODO: deassociate overlay and assiciate it again
+    if(osd_displayed)
+      vaapi_ovl_associate(frame_gen->driver, 0);
+
     destroy_glx(this_gen);
 
     if(this->opengl_render && this->valid_context)
       vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
+
+    if(osd_displayed)
+      vaapi_ovl_associate(frame_gen->driver, 1);
 
     this->sc.force_redraw = 1;
     this->reinit_rendering = 0;

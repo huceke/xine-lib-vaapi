@@ -1923,7 +1923,7 @@ static void ff_reset (video_decoder_t *this_gen) {
     
     if(accel_img ) {
       vaapi_accel_t *accel = (vaapi_accel_t*)accel_img->accel_data;
-      accel->vaapi_hwdecode(accel_img, 0);
+      accel->vaapireset(accel_img, 0);
       accel_img->free(accel_img);
     }
   }
