@@ -1322,7 +1322,7 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
   VADisplayAttribute attr;
   memset( &attr, 0, sizeof(attr) );
   attr.type  = VADisplayAttribBackgroundColor;
-  attr.value = 0x00000000;
+  attr.value = 0x000000;
   vaSetDisplayAttributes(va_context->va_display, &attr, 1);
 
   va_context->width = width;
@@ -2573,9 +2573,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   XLockDisplay( this->display ) ;
   this->gc                      = XCreateGC (this->display, this->drawable, 0, NULL);
-  XAllocNamedColor (this->display,
-		    DefaultColormap(this->display, this->screen),
-		    "black", &this->black, &dummy);
+  XAllocNamedColor (this->display, DefaultColormap(this->display, this->screen), "black", &this->black, &dummy);
   XUnlockDisplay( this->display ) ;
 
   this->num_frame_buffers               = 0;
