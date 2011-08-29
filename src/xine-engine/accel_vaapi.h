@@ -85,6 +85,7 @@ struct ff_vaapi_context_s {
   void              *gl_surface;
   int               va_osd_associated;
   unsigned int      soft_head;
+  int               valid_context;
   struct vaapi_equalizer va_equalizer;
 };
 

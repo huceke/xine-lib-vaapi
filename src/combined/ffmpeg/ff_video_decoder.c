@@ -1918,6 +1918,7 @@ static void ff_reset (video_decoder_t *this_gen) {
   //this->video_step = 0;
   //this->reported_video_step = 0;
 
+  /*
   if(this->class->enable_vaapi) {
     vo_frame_t *accel_img  = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
     
@@ -1927,7 +1928,7 @@ static void ff_reset (video_decoder_t *this_gen) {
       accel_img->free(accel_img);
     }
   }
-
+  */
 }
 
 static void ff_discontinuity (video_decoder_t *this_gen) {
