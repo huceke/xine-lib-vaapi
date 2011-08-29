@@ -1048,14 +1048,16 @@ static void vaapi_close(vaapi_driver_t *this) {
     }
   }
 
-  for(i = 0; i < SOFT_SURFACES; i++) {
-    vaapi_destroy_image((vo_driver_t *)this, &va_soft_images[i]);
+  if(va_soft_surface_ids[0] != VA_INVALID_SURFACE) {
+    for(i = 0; i < SOFT_SURFACES; i++) {
+      vaapi_destroy_image((vo_driver_t *)this, &va_soft_images[i]);
 
-    if(va_soft_surface_ids[i] != VA_INVALID_SURFACE) {
+      if(va_soft_surface_ids[i] != VA_INVALID_SURFACE) {
 #ifdef DEBUG_SURFACE
-      printf("vaapi_close destroy render surface 0x%08x\n", va_soft_surface_ids[i]);
+        printf("vaapi_close destroy render surface 0x%08x\n", va_soft_surface_ids[i]);
 #endif
-      vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+        vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+      }
     }
   }
 
@@ -1157,8 +1159,10 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen) {
   if(va_context->va_osd_associated && va_context->va_subpic_id != VA_INVALID_ID) {
     vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
           va_surface_ids, RENDER_SURFACES);
-    vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-          va_soft_surface_ids, SOFT_SURFACES);
+    if(va_soft_surface_ids[0] != VA_INVALID_SURFACE) {
+      vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+            va_soft_surface_ids, SOFT_SURFACES);
+    }
     va_context->va_osd_associated = 0;
   }
 
@@ -1357,22 +1361,25 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   }
 
   /* allocate software surfaces */
-  vaStatus = vaCreateSurfaces(va_context->va_display, va_context->width, va_context->height, VA_RT_FORMAT_YUV420, SOFT_SURFACES, va_soft_surface_ids);
-  if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaces()")) {
-    for(i = 0; i < SOFT_SURFACES; i++) {
-      va_surface_ids[i] = VA_INVALID_SURFACE;
-    }
-    goto error;
-  }
-
-  for(i = 0; i < SOFT_SURFACES; i++) {
-    vaStatus = vaapi_create_image((vo_driver_t *)this, va_soft_surface_ids[i], &va_soft_images[i], va_context->width, va_context->height);
-    if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()"))
+  if(!this->hw_render) {
+    vaStatus = vaCreateSurfaces(va_context->va_display, va_context->width, va_context->height, VA_RT_FORMAT_YUV420, SOFT_SURFACES, va_soft_surface_ids);
+    if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaces()")) {
+      for(i = 0; i < SOFT_SURFACES; i++) {
+        va_surface_ids[i] = VA_INVALID_SURFACE;
+      }
       goto error;
+    }
+
+    for(i = 0; i < SOFT_SURFACES; i++) {
+      vaStatus = vaapi_create_image((vo_driver_t *)this, va_soft_surface_ids[i], &va_soft_images[i], va_context->width, va_context->height);
+      if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()"))
+        goto error;
+    }
   }
 
   /* hardware decoding needs more setup */
-  if(!softrender) {
+  //if(!softrender) {
+  if(this->hw_render) {
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : Profile: %d (%s) Entrypoint %d (%s) Surfaces %d\n", va_context->va_profile, vaapi_profile_to_string(va_context->va_profile), VAEntrypointVLD, vaapi_entrypoint_to_string(VAEntrypointVLD), RENDER_SURFACES);
 
     memset( &va_attrib, 0, sizeof(va_attrib) );
@@ -1451,8 +1458,8 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softrender);
   this->hw_render = 1;
+  vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softrender);
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
@@ -1576,10 +1583,12 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow) {
                               0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
                               0, 0, output_width, output_height, flags);
 
-    vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+    if(va_soft_surface_ids[0] != VA_INVALID_SURFACE) {
+      vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
                               va_soft_surface_ids, SOFT_SURFACES,
                               0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
                               0, 0, output_width, output_height, flags);
+    }
 
     if(vaapi_check_status(this_gen, vaStatus, "vaAssociateSubpicture()")) {
       this->osd_displayed = 1;
