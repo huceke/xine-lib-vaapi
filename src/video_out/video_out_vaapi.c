@@ -2237,7 +2237,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   lprintf("vaapi_display_frame\n");
 
-  if(frame->height < 17 && frame->width < 17) {
+  if(frame->height < 17 || frame->width < 17) {
     frame->vo_frame.free( frame_gen );
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " frame size to small width %d height %d\n", frame->height, frame->width);
     return;
@@ -2270,7 +2270,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->width, frame->height);
 
-    // TODO: deassociate overlay and assiciate it again
     int osd_displayed = this->osd_displayed;
 
     if(osd_displayed)
