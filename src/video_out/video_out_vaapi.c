@@ -864,7 +864,7 @@ static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, 
     static const int mpeg2_profiles[] =
         { VAProfileMPEG2Main, VAProfileMPEG2Simple, -1 };
     static const int mpeg4_profiles[] =
-        { VAProfileMPEG4Main, VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Simple, -1 };
+        { VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Main, VAProfileMPEG4Simple, -1 };
     static const int h264_profiles[] =
         { VAProfileH264High, VAProfileH264Main, VAProfileH264Baseline, -1 };
     static const int wmv3_profiles[] =
