@@ -1918,17 +1918,6 @@ static void ff_reset (video_decoder_t *this_gen) {
   //this->video_step = 0;
   //this->reported_video_step = 0;
 
-  /*
-  if(this->class->enable_vaapi) {
-    vo_frame_t *accel_img  = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
-    
-    if(accel_img ) {
-      vaapi_accel_t *accel = (vaapi_accel_t*)accel_img->accel_data;
-      accel->vaapireset(accel_img, 0);
-      accel_img->free(accel_img);
-    }
-  }
-  */
 }
 
 static void ff_discontinuity (video_decoder_t *this_gen) {
@@ -1976,6 +1965,16 @@ static void ff_dispose (video_decoder_t *this_gen) {
   ff_video_decoder_t *this = (ff_video_decoder_t *) this_gen;
 
   lprintf ("ff_dispose\n");
+
+  if(this->class->enable_vaapi) {
+    vo_frame_t *accel_img  = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
+    
+    if(accel_img ) {
+      vaapi_accel_t *accel = (vaapi_accel_t*)accel_img->accel_data;
+      accel->vaapi_reset(accel_img, 0);
+      accel_img->free(accel_img);
+    }
+  }
 
   if (this->decoder_ok) {
     xine_list_iterator_t it;

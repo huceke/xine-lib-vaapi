@@ -85,7 +85,10 @@ struct ff_vaapi_context_s {
   void              *gl_surface;
   int               va_osd_associated;
   unsigned int      soft_head;
-  int               valid_context;
+  unsigned int      valid_context;
+  unsigned int      hw_render;
+  unsigned int      last_format;
+  vo_driver_t       *driver;
   struct vaapi_equalizer va_equalizer;
 };
 
@@ -94,7 +97,7 @@ typedef struct {
   VASurfaceID               va_surface_id;
 
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softrender);
-  void (*vaapireset)(vo_frame_t *frame_gen, int hwdecode);
+  void (*vaapi_reset)(vo_frame_t *frame_gen, int hwdecode);
   int (*profile_from_imgfmt)(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec);
   ff_vaapi_context_t *(*get_context)(vo_frame_t *frame_gen);
 } vaapi_accel_t;
