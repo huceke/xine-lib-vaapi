@@ -2468,7 +2468,7 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     } else {
       va_context->last_format    = format;
       va_context->softrender    = 0;
-      frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
+      //frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
