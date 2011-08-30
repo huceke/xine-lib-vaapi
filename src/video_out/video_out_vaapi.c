@@ -2245,9 +2245,14 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *this, xine_current_fr
       return;
     */
 
-    lprintf("va_image.image_id 0x%08x va_image.width %d va_image.height %d width %d height %d size1 %d size2 %d %d %d %d\n", 
+    lprintf("vaapi_provide_standard_frame_data va_image.image_id 0x%08x va_image.width %d va_image.height %d width %d height %d size1 %d size2 %d %d %d %d\n", 
        va_image.image_id, va_image.width, va_image.height, this->width, this->height, va_image.data_size, data->img_size, 
        va_image.pitches[0], va_image.pitches[1], va_image.pitches[2]);
+
+    if(va_image.image_id == VA_INVALID_ID) {
+      printf("vaapi_provide_standard_frame_data invalid image\n");
+      goto error;
+    }
 
     vaStatus = vaGetImage(va_context->va_display, accel->va_surface_id, 0, 0,
                           va_image.width, va_image.height, va_image.image_id);
@@ -2291,6 +2296,9 @@ error:
 
 static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *original)
 {
+  vaapi_driver_t      *driver     = (vaapi_driver_t *) original->driver;
+  ff_vaapi_context_t  *va_context = driver->va_context;
+
   vaapi_frame_t *this = (vaapi_frame_t *)this_gen;
   vaapi_frame_t *orig = (vaapi_frame_t *)original;
 
@@ -2302,34 +2310,89 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
       (original->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((original->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2"),
       accel_orig->va_surface_id, accel_this->va_surface_id);
 
-  if (orig->vo_frame.format != XINE_IMGFMT_VAAPI) {
+  if (orig->vo_frame.format != XINE_IMGFMT_VAAPI || this->vo_frame.format != XINE_IMGFMT_VAAPI) {
     fprintf(stderr, "vaapi_duplicate_frame_data: unexpected frame format 0x%08x!\n", orig->vo_frame.format);
     return;
   }
 
-  this->vo_frame.pitches[0] = 8*((orig->vo_frame.width + 7) / 8);
-  this->vo_frame.pitches[1] = 8*((orig->vo_frame.width + 15) / 16);
-  this->vo_frame.pitches[2] = 8*((orig->vo_frame.width + 15) / 16);
-  this->vo_frame.base[0] = av_mallocz(this->vo_frame.pitches[0] * orig->vo_frame.height);
-  this->vo_frame.base[1] = av_mallocz(this->vo_frame.pitches[1] * ((orig->vo_frame.height+1)/2));
-  this->vo_frame.base[2] = av_mallocz(this->vo_frame.pitches[2] * ((orig->vo_frame.height+1)/2));
+  pthread_mutex_lock(&driver->vaapi_lock);
+  XLockDisplay(driver->display);
 
-  // TODO: read frame
+  VAImage   va_image_orig;
+  VAImage   va_image_this;
+  VAStatus  vaStatus;
+  void      *p_base_orig = NULL;
+  void      *p_base_this = NULL;
+
+  vaSyncSurface(va_context->va_display, accel_orig->va_surface_id);
+
+  vaStatus = vaapi_create_output_image(va_context->driver, &va_image_orig, accel_orig->va_surface_id, orig->width, orig->height);
+  if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_output_image()")) {
+    va_image_orig.image_id = VA_INVALID_ID;
+    goto error;
+  }
+
+  vaStatus = vaapi_create_output_image(va_context->driver, &va_image_this, accel_orig->va_surface_id, this->width, this->height);
+  if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_output_image()")) {
+    va_image_this.image_id = VA_INVALID_ID;
+    goto error;
+  }
+
   /*
-  st = vdp_video_surface_getbits_ycbcr(orig->vdpau_accel_data.surface, format, this->vo_frame.base, this->vo_frame.pitches);
-  if (st != VDP_STATUS_OK)
-    fprintf(stderr, "vo_vdpau: failed to get surface bits !! %s\n", vdp_get_error_string(st));
-
-  st = vdp_video_surface_putbits_ycbcr(this->vdpau_accel_data.surface, format, this->vo_frame.base, this->vo_frame.pitches);
-  if (st != VDP_STATUS_OK)
-    fprintf(stderr, "vo_vdpau: failed to put surface bits !! %s\n", vdp_get_error_string(st));
-
-  this->vdpau_accel_data.color_standard = orig->vdpau_accel_data.color_standard;
+  vaStatus = vaapi_create_image(va_context->driver, accel->va_surface_id, &va_image_orig, this->width, this->height);
+  if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()"))
+    return;
   */
 
-  av_freep (&this->vo_frame.base[0]);
-  av_freep (&this->vo_frame.base[1]);
-  av_freep (&this->vo_frame.base[2]);
+  if(va_image_orig.image_id == VA_INVALID_ID || va_image_this.image_id == VA_INVALID_ID) {
+    printf("vaapi_duplicate_frame_data invalid image\n");
+    goto error;
+  }
+
+  lprintf("vaapi_duplicate_frame_data va_image_orig.image_id 0x%08x va_image_orig.width %d va_image_orig.height %d width %d height %d size %d %d %d %d\n", 
+       va_image_orig.image_id, va_image_orig.width, va_image_orig.height, this->width, this->height, va_image_orig.data_size, 
+       va_image_orig.pitches[0], va_image_orig.pitches[1], va_image_orig.pitches[2]);
+
+  vaStatus = vaGetImage(va_context->va_display, accel_orig->va_surface_id, 0, 0,
+                          va_image_orig.width, va_image_orig.height, va_image_orig.image_id);
+
+  if(vaapi_check_status(va_context->driver, vaStatus, "vaGetImage()")) {
+    if(!va_context->is_bound) {
+      vaStatus = vaPutImage(va_context->va_display, accel_this->va_surface_id, va_image_orig.image_id,
+                 0, 0, va_image_orig.width, va_image_orig.height,
+                 0, 0, va_image_this.width, va_image_this.height);
+      vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()");
+    } else {
+
+      vaStatus = vaMapBuffer( va_context->va_display, va_image_orig.buf, &p_base_orig ) ;
+      if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
+        goto error;
+
+      vaStatus = vaMapBuffer( va_context->va_display, va_image_this.buf, &p_base_this ) ;
+      if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
+        goto error;
+
+      int size = (va_image_orig.data_size > va_image_this.data_size) ? va_image_this.data_size : va_image_orig.data_size;
+      memcpy((uint8_t *)p_base_this, (uint8_t *)p_base_orig, size);
+    }
+
+  }
+
+error:
+  if(p_base_orig) {
+    vaStatus = vaUnmapBuffer(va_context->va_display, va_image_orig.buf);
+    vaapi_check_status(va_context->driver, vaStatus, "vaUnmapBuffer()");
+  }
+  if(p_base_this) {
+    vaStatus = vaUnmapBuffer(va_context->va_display, va_image_this.buf);
+    vaapi_check_status(va_context->driver, vaStatus, "vaUnmapBuffer()");
+  }
+
+  vaapi_destroy_image(va_context->driver, &va_image_orig);
+  vaapi_destroy_image(va_context->driver, &va_image_this);
+
+  XUnlockDisplay(driver->display);
+  pthread_mutex_unlock(&driver->vaapi_lock);
 }
 
 static void vaapi_update_frame_format (vo_driver_t *this_gen,
@@ -2339,10 +2402,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
   vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
   vaapi_frame_t       *frame      = (vaapi_frame_t*)frame_gen;
   ff_vaapi_context_t  *va_context = this->va_context;
-
-  /*
-  vaapi_accel_t       *accel      = &frame->vaapi_accel_data;
-  */
 
   lprintf("vaapi_update_frame_format\n");
 
@@ -2397,7 +2456,8 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     } else {
       va_context->last_format    = format;
       va_context->softrender    = 0;
-      frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
+      //frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
+      frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
     }
