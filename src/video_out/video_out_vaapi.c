@@ -77,6 +77,12 @@
 #define  SW_HEIGHT        1080
 #define  STABLE_FRAME_COUNTER 4
 
+#if defined VA_SRC_BT601 && defined VA_SRC_BT709
+# define USE_VAAPI_COLORSPACE 1
+#else
+# define USE_VAAPI_COLORSPACE 0
+#endif
+
 #define IMGFMT_VAAPI               0x56410000 /* 'VA'00 */
 #define IMGFMT_VAAPI_MASK          0xFFFF0000
 #define IMGFMT_IS_VAAPI(fmt)       (((fmt) & IMGFMT_VAAPI_MASK) == IMGFMT_VAAPI)
@@ -206,6 +212,8 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen);
 static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image);
 static int vaapi_ovl_associate(vo_driver_t *this_gen, int bShow);
 static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen);
+static const char *vaapi_profile_to_string(VAProfile profile);
+static int nv12_to_yv12(unsigned char *src_in, xine_current_frame_data_t *data, VAImage *va_image);
 
 void (GLAPIENTRY *mpglGenTextures)(GLsizei, GLuint *);
 void (GLAPIENTRY *mpglBindTexture)(GLenum, GLuint);
@@ -830,81 +838,120 @@ static enum PixelFormat vaapi_imgfmt2pixfmt(int fmt)
 
 static int vaapi_pixfmt2imgfmt(enum PixelFormat pix_fmt, int codec_id)
 {
-    int i;
-    int fmt;
-    for (i = 0; conversion_map[i].pix_fmt != PIX_FMT_NONE; i++)
-        if (conversion_map[i].pix_fmt == pix_fmt &&
-            (conversion_map[i].codec_id == 0 ||
-             conversion_map[i].codec_id == codec_id))
-            break;
-    fmt = conversion_map[i].fmt;
-    return fmt;
+  int i;
+  int fmt;
+  for (i = 0; conversion_map[i].pix_fmt != PIX_FMT_NONE; i++) {
+    if (conversion_map[i].pix_fmt == pix_fmt &&
+        (conversion_map[i].codec_id == 0 ||
+        conversion_map[i].codec_id == codec_id)) {
+      break;
+    }
+  }
+  fmt = conversion_map[i].fmt;
+  return fmt;
 }
 
-static int vaapi_has_profile(VAProfile profile)
+static int vaapi_has_profile(VAProfile *va_profiles, int va_num_profiles, VAProfile profile)
 {
-    // TODO query profiles from the output device
-    /*
-    if (va_profiles && va_num_profiles > 0) {
-        int i;
-        for (i = 0; i < va_num_profiles; i++) {
-            if (va_profiles[i] == profile)
-                return 1;
-        }
-    }
-    return 0;
-    */
-    return 1;
+  if (va_profiles && va_num_profiles > 0) {
+    int i;
+    for (i = 0; i < va_num_profiles; i++) {
+      if (va_profiles[i] == profile)
+        return 1;
+      }
+  }
+  return 0;
 }
 
 static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec)
 {
-    uint32_t format = vaapi_pixfmt2imgfmt(pix_fmt, codec_id);
+  vo_driver_t         *this_gen   = (vo_driver_t *) frame_gen->driver;
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  ff_vaapi_context_t  va_context;
+  VAStatus            vaStatus;
+  int                 profile     = -1;
+  int                 maj, min, i;
+  int                 va_num_profiles;
+  int                 max_profiles;
+  VAProfile           *va_profiles = NULL;
 
-    static const int mpeg2_profiles[] =
-        { VAProfileMPEG2Main, VAProfileMPEG2Simple, -1 };
-    static const int mpeg4_profiles[] =
-        { VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Main, VAProfileMPEG4Simple, -1 };
-    static const int h264_profiles[] =
-        { VAProfileH264High, VAProfileH264Main, VAProfileH264Baseline, -1 };
-    static const int wmv3_profiles[] =
-        { VAProfileVC1Main, VAProfileVC1Simple, -1 };
-    static const int vc1_profiles[] =
-        { VAProfileVC1Advanced, -1 };
+  memset(&va_context, 0x0, sizeof(ff_vaapi_context_t));
 
-    const int *profiles = NULL;
-    switch (IMGFMT_VAAPI_CODEC(format)) {
+  va_context.va_display = vaapi_get_display(this->display, this->opengl_render);
+
+  if(!va_context.va_display)
+    goto out;
+  
+  vaStatus = vaInitialize(va_context.va_display, &maj, &min);
+  if(!vaapi_check_status(this_gen, vaStatus, "vaInitialize()"))
+    goto out;
+
+  max_profiles = vaMaxNumProfiles(va_context.va_display);
+  va_profiles = calloc(max_profiles, sizeof(*va_profiles));
+  if (!va_profiles)
+    goto out;
+
+  vaStatus = vaQueryConfigProfiles(va_context.va_display, va_profiles, &va_num_profiles);
+  if(!vaapi_check_status(this_gen, vaStatus, "vaQueryConfigProfiles()"))
+    goto out;
+
+  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " VAAPI Supported Profiles : ");
+  for (i = 0; i < va_num_profiles; i++) {
+    printf("%s ", vaapi_profile_to_string(va_profiles[i]));
+  }
+  printf("\n");
+
+  uint32_t format = vaapi_pixfmt2imgfmt(pix_fmt, codec_id);
+
+  static const int mpeg2_profiles[] = { VAProfileMPEG2Main, VAProfileMPEG2Simple, -1 };
+  static const int mpeg4_profiles[] = { VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Main, VAProfileMPEG4Simple, -1 };
+  static const int h264_profiles[]  = { VAProfileH264High, VAProfileH264Main, VAProfileH264Baseline, -1 };
+  static const int wmv3_profiles[]  = { VAProfileVC1Main, VAProfileVC1Simple, -1 };
+  static const int vc1_profiles[]   = { VAProfileVC1Advanced, -1 };
+
+  const int *profiles = NULL;
+  switch (IMGFMT_VAAPI_CODEC(format)) 
+  {
     case IMGFMT_VAAPI_CODEC_MPEG2:
-        if(!vaapi_mpeg_sofdec) {
-          profiles = mpeg2_profiles;
-        }
-        break;
+      if(!vaapi_mpeg_sofdec) {
+        profiles = mpeg2_profiles;
+      }
+      break;
     case IMGFMT_VAAPI_CODEC_MPEG4:
-        profiles = mpeg4_profiles;
-        break;
+      profiles = mpeg4_profiles;
+      break;
     case IMGFMT_VAAPI_CODEC_H264:
-        profiles = h264_profiles;
-        break;
+      profiles = h264_profiles;
+      break;
     case IMGFMT_VAAPI_CODEC_VC1:
-        switch (format) {
+      switch (format) {
         case IMGFMT_VAAPI_WMV3:
-            profiles = wmv3_profiles;
-            break;
+          profiles = wmv3_profiles;
+          break;
         case IMGFMT_VAAPI_VC1:
             profiles = vc1_profiles;
             break;
-        }
-        break;
-    }
+      }
+      break;
+  }
 
-    if (profiles) {
-      int i;
-        for (i = 0; profiles[i] != -1; i++) {
-            if (vaapi_has_profile(profiles[i]))
-                return profiles[i];
-        }
+  if (profiles) {
+    int i;
+    for (i = 0; profiles[i] != -1; i++) {
+      if (vaapi_has_profile(va_profiles, va_num_profiles, profiles[i])) {
+        profile = profiles[i];
+        xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " VAAPI Profile %s supported by your hardware\n", vaapi_profile_to_string(profiles[i]));
+        break;
+      }
     }
-    return -1;
+  }
+
+out:
+  if(va_profiles)
+    free(va_profiles);
+  if(va_context.va_display);
+    vaTerminate(va_context.va_display);
+  return profile;
 }
 
 
@@ -947,35 +994,40 @@ static const char *vaapi_entrypoint_to_string(VAEntrypoint entrypoint)
   return "<unknown>";
 }
 
-/*
-static int nv12_to_yv12(uint8_t  *src_in, uint8_t  *dst_out, int len, int width, int height) {
+static int nv12_to_yv12(unsigned char *src_in, xine_current_frame_data_t *data, VAImage *va_image) {
 
-    unsigned int Y_size  = width * height;
-    unsigned int UV_size = width * height;
-    unsigned int idx;
-    unsigned char *dst_Y = dst_out;
-    unsigned char *dst_U = dst_out + width * height;
-    unsigned char *dst_V = dst_out + width * height * 5/4;
-    unsigned char *src   = src_in + Y_size;
+  uint8_t   *base[3];
+  base[0] = data->img;
+  base[1] = data->img + (va_image->width * va_image->height) + (va_image->width * va_image->height /4);
+  base[2] = data->img + (va_image->width * va_image->height);
 
-    // sanity check raw stream
-    if ( (len != (Y_size + (UV_size<<1))) ) {
-        printf("hmblck: Image size inconsistent with data size.\n");
-        return 0;
-    }
+  unsigned int Y_size  = va_image->width * va_image->height;
+  unsigned int UV_size = va_image->width * va_image->height / 4;
+  unsigned int idx;
+  unsigned char *dst_Y = base[0];
+  unsigned char *dst_U = base[2];
+  unsigned char *dst_V = base[1];
+  unsigned char *src   = src_in + Y_size;
 
-    // luma data is easy, just copy it
-    xine_fast_memcpy(dst_Y, src, Y_size);
+  printf("va_image->offsets[0] %d va_image->offsets[1] %d va_image->offsets[2] %d\n", 
+      va_image->offsets[0], va_image->offsets[1], va_image->offsets[2]);
+  // sanity check raw stream
+  if ( (va_image->data_size != (Y_size + (UV_size<<1))) ) {
+    printf("hmblck: Image size inconsistent with data size.\n");
+    return 0;
+  }
 
-    // chroma data is interlaced UVUV... so deinterlace it
-    for(idx=0; idx<UV_size; idx++ ) {
-        *(dst_U + idx) = *(src + (idx<<1) + 0); 
-        *(dst_V + idx) = *(src + (idx<<1) + 1);
-    }
+  // luma data is easy, just copy it
+  xine_fast_memcpy(dst_Y, src_in, Y_size);
 
-    return 1;
+  // chroma data is interlaced UVUV... so deinterlace it
+  for(idx=0; idx<UV_size; idx++ ) {
+      *(dst_U + idx) = *(src + (idx<<1) + 0); 
+      *(dst_V + idx) = *(src + (idx<<1) + 1);
+  }
+
+  return 1;
 }
-*/
 
 /* Init subpicture */
 static void vaapi_init_subpicture(vaapi_driver_t *this_gen) {
@@ -1007,6 +1059,7 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_config_id              = VA_INVALID_ID;
   va_context->va_context_id             = VA_INVALID_ID;
   va_context->va_profile                = 0;
+  va_context->va_colorspace             = 1;
   this->cur_frame                       = NULL;
   va_context->is_bound                  = 0;
   va_context->gl_surface                = NULL;
@@ -1240,6 +1293,38 @@ error:
 
   free(va_p_fmt);
   return VA_STATUS_ERROR_UNKNOWN;
+}
+
+static inline int vaapi_get_colorspace_flags(vo_driver_t *this_gen)
+{
+  vaapi_driver_t      *this = (vaapi_driver_t *) this_gen;
+  ff_vaapi_context_t  *va_context = this->va_context;
+
+  if(!va_context)
+    return 0;
+
+  int colorspace = 0;
+#if USE_VAAPI_COLORSPACE
+  switch (va_context->va_colorspace) {
+    case 0:
+      colorspace = ((va_context->sw_width >= 1280 || va_context->sw_height > 576) ?
+               VA_SRC_BT709 : VA_SRC_BT601);
+      break;
+    case 1:
+      colorspace = VA_SRC_BT601;
+      break;
+    case 2:
+      colorspace = VA_SRC_BT709;
+      break;
+    case 3:
+      colorspace = VA_SRC_SMPTE_240;
+      break;
+    default:
+      colorspace = VA_SRC_BT601;
+      break;
+  }
+#endif
+    return colorspace;
 }
 
 /* VAAPI display attributes. */
@@ -1488,7 +1573,7 @@ error:
 static void vaapi_reset(vo_frame_t *frame_gen, int hwdecode) {
   vo_driver_t         *this_gen   = (vo_driver_t *) frame_gen->driver;
   vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
-  ff_vaapi_context_t  *va_context = this->va_context;
+  //ff_vaapi_context_t  *va_context = this->va_context;
 
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
@@ -2058,6 +2143,195 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   return ret;
 }
 
+static VAStatus vaapi_create_output_image(vo_driver_t *this_gen, VAImage *va_image, VASurfaceID va_surface_id, int width, int height) {
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  ff_vaapi_context_t  *va_context = this->va_context;
+  VAStatus            vaStatus;
+  int                 i;
+  int                 fmt_count   = vaMaxNumImageFormats( va_context->va_display );
+  VAImageFormat       *va_p_fmt   = calloc( fmt_count, sizeof(*va_p_fmt) );
+  VAStatus            vaStatusRet = VA_STATUS_SUCCESS;
+
+  vaStatus = vaQueryImageFormats( va_context->va_display , va_p_fmt, &fmt_count );
+  if(!vaapi_check_status(va_context->driver, vaStatus, "vaQueryImageFormats()")) {
+    vaStatusRet = VA_STATUS_ERROR_UNKNOWN;
+    fmt_count = 0;
+  }
+
+  for( i = 0; i < fmt_count; i++ ) {
+    if ( va_p_fmt[i].fourcc == VA_FOURCC( 'Y', 'V', '1', '2' ) ||
+       va_p_fmt[i].fourcc == VA_FOURCC( 'I', '4', '2', '0' ) ||
+       va_p_fmt[i].fourcc == VA_FOURCC( 'N', 'V', '1', '2' ) ) {
+
+      if( vaCreateImage( va_context->va_display, &va_p_fmt[i], width, height, va_image) ) {
+          va_image->image_id = VA_INVALID_ID;
+        continue;
+      }
+      if( vaGetImage(va_context->va_display, va_surface_id, 0, 0,
+                   width, height, va_image->image_id) ) {
+        vaDestroyImage( va_context->va_display, va_image->image_id );
+        va_image->image_id = VA_INVALID_ID;
+        continue;
+      }
+      break;
+    }
+  }
+
+  if(va_image->image_id == VA_INVALID_ID)
+    vaStatus = VA_STATUS_ERROR_UNKNOWN;
+
+  free(va_p_fmt);
+  return vaStatusRet;
+}
+
+static void vaapi_provide_standard_frame_data (vo_frame_t *this, xine_current_frame_data_t *data)
+{
+  vaapi_driver_t      *driver     = (vaapi_driver_t *) this->driver;
+  ff_vaapi_context_t  *va_context = driver->va_context;
+
+  vaapi_accel_t *accel = (vaapi_accel_t *) this->accel_data;
+  //this = (vo_frame_t *)&accel->vo_frame;
+
+  uint32_t  pitches[3];
+  uint8_t   *base[3];
+
+  if(driver == NULL) {
+    return;
+  }
+
+  lprintf("vaapi_provide_standard_frame_data %s 0x%08x width %d height %d\n", 
+      (this->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((this->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2"),
+      accel->va_surface_id, this->width, this->height);
+
+  if (this->format != XINE_IMGFMT_VAAPI) {
+    fprintf(stderr, "vaapi_provide_standard_frame_data: unexpected frame format 0x%08x!\n", this->format);
+    return;
+  }
+
+  if( !accel || accel->va_surface_id == VA_INVALID_SURFACE )
+    return;
+
+  pthread_mutex_lock(&driver->vaapi_lock);
+  XLockDisplay(driver->display);
+
+  data->format = XINE_IMGFMT_YV12;
+  data->img_size = this->width * this->height
+                   + ((this->width + 1) / 2) * ((this->height + 1) / 2)
+                   + ((this->width + 1) / 2) * ((this->height + 1) / 2);
+  if (data->img) {
+    pitches[0] = this->width;
+    pitches[2] = this->width / 2;
+    pitches[1] = this->width / 2;
+    base[0] = data->img;
+    base[2] = data->img + this->width * this->height;
+    base[1] = data->img + this->width * this->height + this->width * this->height / 4;
+  }
+
+  if (data->img) {
+
+    VAImage   va_image;
+    VAStatus  vaStatus;
+    void      *p_base;
+    uint32_t  fourcc;
+
+    vaSyncSurface(va_context->va_display, accel->va_surface_id);
+
+    vaStatus = vaapi_create_output_image(va_context->driver, &va_image, accel->va_surface_id, this->width, this->height);
+    if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_output_image()"))
+      goto error;
+    /*
+    vaStatus = vaapi_create_image(va_context->driver, accel->va_surface_id, &va_image, this->width, this->height);
+    if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()"))
+      return;
+    */
+
+    lprintf("va_image.image_id 0x%08x va_image.width %d va_image.height %d width %d height %d size1 %d size2 %d %d %d %d\n", 
+       va_image.image_id, va_image.width, va_image.height, this->width, this->height, va_image.data_size, data->img_size, 
+       va_image.pitches[0], va_image.pitches[1], va_image.pitches[2]);
+
+    vaStatus = vaGetImage(va_context->va_display, accel->va_surface_id, 0, 0,
+                          va_image.width, va_image.height, va_image.image_id);
+    //vaStatus = vaGetImage(va_context->va_display, accel->va_surface_id, 0, 0,
+    //                      va_image.width, va_image.height, va_image.image_id);
+
+    if(vaapi_check_status(va_context->driver, vaStatus, "vaGetImage()")) {
+      vaStatus = vaMapBuffer( va_context->va_display, va_image.buf, &p_base ) ;
+      if(vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()")) {
+
+        fourcc = va_image.format.fourcc;
+
+        if( fourcc == VA_FOURCC('Y','V','1','2') ||
+            fourcc == VA_FOURCC('I','4','2','0') ) {
+          printf("VAAPI YV12 image\n");
+          yv12_to_yv12(
+            (uint8_t*)p_base + va_image.offsets[0], va_image.pitches[0],
+            base[0], pitches[0],
+            (uint8_t*)p_base + va_image.offsets[2], va_image.pitches[2],
+            base[1], pitches[1],
+            (uint8_t*)p_base + va_image.offsets[1], va_image.pitches[1],
+            base[2], pitches[2],
+            va_image.width, va_image.height);
+        } else if( fourcc == VA_FOURCC('N','V','1','2') ) {
+          printf("VAAPI NV12 image\n");
+          nv12_to_yv12((uint8_t*)p_base, data, &va_image);
+        }
+
+        vaStatus = vaUnmapBuffer(va_context->va_display, va_image.buf);
+        vaapi_check_status(va_context->driver, vaStatus, "vaUnmapBuffer()");
+        vaapi_destroy_image(va_context->driver, &va_image);
+      }
+    }
+  }
+
+error:
+  XUnlockDisplay(driver->display);
+  pthread_mutex_unlock(&driver->vaapi_lock);
+
+}
+
+static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *original)
+{
+  vaapi_frame_t *this = (vaapi_frame_t *)this_gen;
+  vaapi_frame_t *orig = (vaapi_frame_t *)original;
+
+  vaapi_accel_t      *accel_this = &this->vaapi_accel_data;
+  vaapi_accel_t      *accel_orig = &orig->vaapi_accel_data;
+
+  lprintf("vaapi_duplicate_frame_data %s %s 0x%08x 0x%08x\n", 
+      (this_gen->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((this_gen->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2"),
+      (original->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((original->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2"),
+      accel_orig->va_surface_id, accel_this->va_surface_id);
+
+  if (orig->vo_frame.format != XINE_IMGFMT_VAAPI) {
+    fprintf(stderr, "vaapi_duplicate_frame_data: unexpected frame format 0x%08x!\n", orig->vo_frame.format);
+    return;
+  }
+
+  this->vo_frame.pitches[0] = 8*((orig->vo_frame.width + 7) / 8);
+  this->vo_frame.pitches[1] = 8*((orig->vo_frame.width + 15) / 16);
+  this->vo_frame.pitches[2] = 8*((orig->vo_frame.width + 15) / 16);
+  this->vo_frame.base[0] = av_mallocz(this->vo_frame.pitches[0] * orig->vo_frame.height);
+  this->vo_frame.base[1] = av_mallocz(this->vo_frame.pitches[1] * ((orig->vo_frame.height+1)/2));
+  this->vo_frame.base[2] = av_mallocz(this->vo_frame.pitches[2] * ((orig->vo_frame.height+1)/2));
+
+  // TODO: read frame
+  /*
+  st = vdp_video_surface_getbits_ycbcr(orig->vdpau_accel_data.surface, format, this->vo_frame.base, this->vo_frame.pitches);
+  if (st != VDP_STATUS_OK)
+    fprintf(stderr, "vo_vdpau: failed to get surface bits !! %s\n", vdp_get_error_string(st));
+
+  st = vdp_video_surface_putbits_ycbcr(this->vdpau_accel_data.surface, format, this->vo_frame.base, this->vo_frame.pitches);
+  if (st != VDP_STATUS_OK)
+    fprintf(stderr, "vo_vdpau: failed to put surface bits !! %s\n", vdp_get_error_string(st));
+
+  this->vdpau_accel_data.color_standard = orig->vdpau_accel_data.color_standard;
+  */
+
+  av_freep (&this->vo_frame.base[0]);
+  av_freep (&this->vo_frame.base[1]);
+  av_freep (&this->vo_frame.base[2]);
+}
+
 static void vaapi_update_frame_format (vo_driver_t *this_gen,
 				    vo_frame_t *frame_gen,
 				    uint32_t width, uint32_t height,
@@ -2106,6 +2380,8 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
         va_context->softrender    = 1;
         va_context->last_format   = format;
       }
+      frame->vo_frame.proc_duplicate_frame_data = NULL;
+      frame->vo_frame.proc_provide_standard_frame_data = NULL;
       lprintf("XINE_IMGFMT_YV12 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_YUY2){
       frame->vo_frame.pitches[0] = 8*((width + 3) / 4);
@@ -2115,12 +2391,14 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
         va_context->softrender    = 1;
         va_context->last_format   = format;
       }
-      lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
-    } else {
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
+      lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
+    } else {
       va_context->last_format    = format;
       va_context->softrender    = 0;
+      frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
+      frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
     }
 
@@ -2238,6 +2516,8 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
   for(i = 0; i <= !!((deint > 1) && interlaced_frame); i++) {
     unsigned int flags = (deint && (interlaced_frame) ? (((!!(top_field_first)) ^ i) == 0 ? VA_BOTTOM_FIELD : VA_TOP_FIELD) : VA_FRAME_PICTURE);
 
+    //flags |= vaapi_get_colorspace_flags(this_gen);
+
     lprintf("Putsrfc srfc 0x%08X flags 0x%08x %dx%d -> %dx%d interlaced %d top_field_first %d\n", 
             va_surface_id, flags, width, height, 
             this->sc.output_width, this->sc.output_height,
@@ -2338,6 +2618,10 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->width, frame->height, va_context->sw_width, va_context->sw_height, va_context->softrender, va_context->valid_context);
 
+  /*
+  if( ((frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2)) 
+      && ((frame->width != va_context->sw_width) ||(frame->height != va_context->sw_height )) ) {
+  */
   if( !va_context->valid_context && ((frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2)) /*&& va_context->softrender*/) {
     lprintf("vaapi_display_frame %s frame->width %d frame->height %d softrender %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
@@ -2350,6 +2634,15 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
     printf("vaapi_display_frame init full context\n");
     vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    /*
+    if(!va_context->valid_context) {
+      printf("vaapi_display_frame init full context\n");
+      vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+    } else {
+      printf("vaapi_display_frame init soft surfaces\n");
+      vaapi_init_soft_surfaces(frame_gen->driver, frame->width, frame->height);
+    }
+    */
 
     this->sc.force_redraw = 1;
 

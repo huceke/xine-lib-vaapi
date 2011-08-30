@@ -76,6 +76,7 @@ struct ff_vaapi_context_s {
   int               sw_width;
   int               sw_height;
   int               va_profile;
+  unsigned int      va_colorspace;
   VAImage           va_subpic_image;
   VASubpictureID    va_subpic_id;
   int               va_subpic_width;
