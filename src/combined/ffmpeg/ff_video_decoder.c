@@ -474,7 +474,7 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
   {
     this->class->thread_count = this->context->thread_count = 1;
 
-    //this->context->skip_loop_filter = AVDISCARD_DEFAULT;
+    this->context->skip_loop_filter = AVDISCARD_DEFAULT;
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
      _("ffmpeg_video_dec: force AVDISCARD_DEFAULT for VAAPI\n"));
   }
@@ -488,7 +488,7 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
        this->context->thread_count = this->class->thread_count;
   }
 
-  if (this->class->choose_speed_over_accuracy)
+  if (this->class->choose_speed_over_accuracy && !this->class->enable_vaapi)
       this->context->flags2 |= CODEC_FLAG2_FAST;
 
   this->context->dsp_mask = 0;
@@ -1245,7 +1245,7 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     /* skip decoding b frames if too late */
 #if AVVIDEO > 1
     this->context->skip_frame = (this->skipframes > 0) ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
-    this->context->skip_idct = this->context->skip_loop_filter = this->context->skip_frame;
+    //this->context->skip_idct = this->context->skip_loop_filter = this->context->skip_frame;
 #else
     this->context->hurry_up = (this->skipframes > 0);
 #endif
@@ -1589,7 +1589,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
         /* skip decoding b frames if too late */
 #if AVVIDEO > 1
 	      this->context->skip_frame = (this->skipframes > 0) ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
-        this->context->skip_idct = this->context->skip_loop_filter = this->context->skip_frame;
+        //this->context->skip_idct = this->context->skip_loop_filter = this->context->skip_frame;
 #else
         this->context->hurry_up = (this->skipframes > 0);
 #endif

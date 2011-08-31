@@ -1166,8 +1166,8 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
     va_context->is_bound = 1;
   } else {
     for (i = 0; i < fmt_count; i++) {
-      if (va_p_fmt[i].fourcc == VA_FOURCC( 'Y', 'V', '1', '2' ) ||
-          va_p_fmt[i].fourcc == VA_FOURCC( 'N', 'V', '1', '2' ) ) {
+      if (va_p_fmt[i].fourcc == VA_FOURCC( 'Y', 'V', '1', '2' ) /*||
+          va_p_fmt[i].fourcc == VA_FOURCC( 'N', 'V', '1', '2' ) */) {
         vaStatus = vaCreateImage( va_context->va_display, &va_p_fmt[i], width, height, va_image );
         if(!vaapi_check_status(this_gen, vaStatus, "vaCreateImage()"))
           goto error;
@@ -2470,9 +2470,9 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     } else if (format == XINE_IMGFMT_VAAPI) {
       va_context->last_format    = format;
       va_context->softrender    = 0;
-      //frame->vo_frame.proc_duplicate_frame_data = NULL;
+      frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
-      frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
+      //frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
     }
 
