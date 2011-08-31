@@ -239,6 +239,8 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
 
     av_frame->reordered_opaque = context->reordered_opaque;
 
+    //printf("get_buffer accel->va_surface 0x%08x\n", accel->va_surface_id);
+
     av_frame->data[0] = (void *)(uintptr_t)accel->va_surface_id;
     av_frame->data[1] = NULL;
     av_frame->data[2] = NULL;
