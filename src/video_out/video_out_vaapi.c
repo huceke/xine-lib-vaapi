@@ -2492,13 +2492,11 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
 
   vaUnmapBuffer(va_context->va_display, va_image->buf);
 
-  //if(!va_context->is_bound) {
-    vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
-               0, 0, va_image->width, va_image->height,
-               0, 0, va_image->width, va_image->height);
-    if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
-      return vaStatus;
-  //}
+  vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
+                        0, 0, va_image->width, va_image->height,
+                        0, 0, va_image->width, va_image->height);
+  if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
+    return vaStatus;
 
   return VA_STATUS_SUCCESS;
 }
