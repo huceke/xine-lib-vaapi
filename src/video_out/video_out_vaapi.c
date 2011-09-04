@@ -1519,20 +1519,11 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     }
   }
 
-  //if(softrender) {
-    vaStatus = vaapi_init_soft_surfaces(this_gen, width, height);
-    if(!vaapi_check_status(this_gen, vaStatus, "vaapi_init_soft_surfaces()")) {
-      vaapi_destroy_soft_surfaces(this_gen);
-      goto error;
-    }
-
-  /* output blank image */
-  if(va_soft_surface_ids[0] != VA_INVALID_SURFACE && va_soft_images[0].image_id != VA_INVALID_ID) {
-    vaPutImage(va_context->va_display, va_soft_surface_ids[0], va_soft_images[0].image_id,
-               0, 0, va_soft_images[0].width, va_soft_images[0].height,
-               0, 0, va_soft_images[0].width, va_soft_images[0].height);
+  vaStatus = vaapi_init_soft_surfaces(this_gen, width, height);
+  if(!vaapi_check_status(this_gen, vaStatus, "vaapi_init_soft_surfaces()")) {
+    vaapi_destroy_soft_surfaces(this_gen);
+    goto error;
   }
-  //}
 
   /* hardware decoding needs more setup */
   if(!softrender) {
@@ -1563,11 +1554,9 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   }
 
   va_context->valid_context = 1;
-  va_context->softrender = softrender;
 
   vaapi_display_attribs((vo_driver_t *)this);
 
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : softrender    : %d\n", softrender);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender     : %d\n", this->opengl_render);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender tfp : %d\n", this->opengl_use_tfp);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : brightness    : %d\n", va_context->va_equalizer.brightness.value);
@@ -2403,7 +2392,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_VAAPI) {
       va_context->last_format    = format;
-      va_context->softrender    = 0;
       //frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
@@ -2655,17 +2643,16 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  lprintf("vaapi_display_frame %s frame->width %d frame->height %d va_context->sw_width %d va_context->sw_height %d oftrender %d valid_context %d\n",
+  lprintf("vaapi_display_frame %s frame->width %d frame->height %d va_context->sw_width %d va_context->sw_height %d valid_context %d\n",
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
-        frame->width, frame->height, va_context->sw_width, va_context->sw_height, va_context->softrender, va_context->valid_context);
+        frame->width, frame->height, va_context->sw_width, va_context->sw_height, va_context->valid_context);
 
   if( ((frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2)) 
       && ((frame->width != va_context->sw_width) ||(frame->height != va_context->sw_height )) ) {
 
-  //if( !va_context->valid_context && ((frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2)) /*&& va_context->softrender*/) {
-    lprintf("vaapi_display_frame %s frame->width %d frame->height %d softrender %d\n", 
+    lprintf("vaapi_display_frame %s frame->width %d frame->height %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
-        frame->width, frame->height, va_context->softrender);
+        frame->width, frame->height);
 
     unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
@@ -2789,9 +2776,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
     }
   } else {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format %s width %d height %d valid_context %d softrender %d\n", 
+    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " unsupported image format %s width %d height %d valid_context %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
-        frame->width, frame->height, va_context->valid_context, va_context->softrender);
+        frame->width, frame->height, va_context->valid_context);
   }
 
   XSync(this->display, False);
@@ -3148,7 +3135,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   */
   vaapi_close((vo_driver_t *)this);
   this->va_context->valid_context = 0;
-  this->va_context->softrender    = 1;
   this->va_context->last_format   = 0;
   this->va_context->driver        = (vo_driver_t *)this;
   this->va_context->convert_ctx   = NULL;

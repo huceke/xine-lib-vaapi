@@ -83,7 +83,6 @@ struct ff_vaapi_context_s {
   VASubpictureID    va_subpic_id;
   int               va_subpic_width;
   int               va_subpic_height;
-  int               softrender;
   int               is_bound;
   void              *gl_surface;
   unsigned int      soft_head;
