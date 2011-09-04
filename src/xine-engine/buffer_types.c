@@ -791,6 +791,14 @@ static const video_db_t video_db[] = {
   BUF_VIDEO_SNOW,
   "Snow"
 },
+{
+  {
+    ME_FOURCC('V','P','8','0'),
+    0
+  },
+  BUF_VIDEO_VP8,
+  "On2 VP8"
+},
 { { 0 }, 0, "last entry" }
 };
 

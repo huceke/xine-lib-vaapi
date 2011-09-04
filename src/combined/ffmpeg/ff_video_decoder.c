@@ -488,6 +488,10 @@ static void init_video_codec (ff_video_decoder_t *this, buf_element_t *buf) {
        this->context->thread_count = this->class->thread_count;
   }
 
+  /* TJ. without this, it wont work at all on my machine */
+  this->context->codec_id = this->codec->id;
+  this->context->codec_type = this->codec->type;
+
   if (this->class->choose_speed_over_accuracy && !this->class->enable_vaapi)
       this->context->flags2 |= CODEC_FLAG2_FAST;
 
@@ -1077,6 +1081,8 @@ static void ff_handle_header_buffer (ff_video_decoder_t *this, buf_element_t *bu
       switch (buf->type) {
         case BUF_VIDEO_RV10:
         case BUF_VIDEO_RV20:
+        case BUF_VIDEO_RV30:
+        case BUF_VIDEO_RV40:
           this->bih.biWidth  = _X_BE_16(&this->buf[12]);
           this->bih.biHeight = _X_BE_16(&this->buf[14]);
 

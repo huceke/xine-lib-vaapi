@@ -258,7 +258,7 @@ static void sequence_header_advanced( vdpau_vc1_decoder_t *this_gen, uint8_t *bu
   bits_reader_set( &sequence->br, buf, len );
   skip_bits( &sequence->br, 15 );
   sequence->picture.vdp_infos.postprocflag = read_bits( &sequence->br, 1 );
-  sequence->coded_width = read_bits( &sequence->br, 12 )<<1;
+  sequence->coded_width = (read_bits( &sequence->br, 12 )+1)<<1;
   sequence->coded_height = (read_bits( &sequence->br, 12 )+1)<<1;
   sequence->picture.vdp_infos.pulldown = read_bits( &sequence->br, 1 );
   sequence->picture.vdp_infos.interlace = read_bits( &sequence->br, 1 );
