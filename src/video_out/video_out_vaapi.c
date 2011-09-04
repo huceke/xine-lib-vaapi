@@ -1194,9 +1194,9 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
     goto error;
 
   memset((uint8_t*)p_base + va_image->offsets[0],   0, va_image->pitches[0] * va_image->height);
-  memset((uint8_t*)p_base + va_image->offsets[1], 128, va_image->pitches[1] * (va_image->height/2));
+  memset((uint8_t*)p_base + va_image->offsets[1], 127, va_image->pitches[1] * (va_image->height/2));
   if(va_image->pitches[2])
-    memset((uint8_t*)p_base + va_image->offsets[2], 128, va_image->pitches[2] * (va_image->height/2));
+    memset((uint8_t*)p_base + va_image->offsets[2], 127, va_image->pitches[2] * (va_image->height/2));
 
   vaUnmapBuffer( va_context->va_display, va_image->buf );
 
