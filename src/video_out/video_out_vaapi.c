@@ -1194,9 +1194,9 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
     goto error;
 
   memset((uint8_t*)p_base + va_image->offsets[0],   0, va_image->pitches[0] * va_image->height);
-  memset((uint8_t*)p_base + va_image->offsets[1], 128, va_image->pitches[1] * ((va_image->height+1)/2));
+  memset((uint8_t*)p_base + va_image->offsets[1], 128, va_image->pitches[1] * (va_image->height/2));
   if(va_image->pitches[2])
-    memset((uint8_t*)p_base + va_image->offsets[2], 128, va_image->pitches[2] * ((va_image->height+1)/2));
+    memset((uint8_t*)p_base + va_image->offsets[2], 128, va_image->pitches[2] * (va_image->height/2));
 
   vaUnmapBuffer( va_context->va_display, va_image->buf );
 
@@ -1440,6 +1440,9 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
       vaapi_frame_t *frame = this->frames[i];
       frame->vaapi_accel_data.va_soft_image = &va_soft_images[i];
       frame->vaapi_accel_data.va_soft_surface_id = va_soft_surface_ids[i];
+      vaStatus = vaPutImage(va_context->va_display, va_soft_surface_ids[i], va_soft_images[i].image_id,
+                        0, 0, va_soft_images[i].width, va_soft_images[i].height,
+                        0, 0, va_soft_images[i].width, va_soft_images[i].height);
     }
   }
 
@@ -1515,6 +1518,11 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     if(this->frames[i]) {
       vaapi_frame_t *frame = this->frames[i];
       frame->vaapi_accel_data.va_surface_id = va_surface_ids[i];
+      if(va_soft_images[0].image_id != VA_INVALID_ID) {
+        vaStatus = vaPutImage(va_context->va_display, va_surface_ids[i], va_soft_images[0].image_id,
+                        0, 0, va_soft_images[0].width, va_soft_images[0].height,
+                        0, 0, va_soft_images[0].width, va_soft_images[0].height);
+      }
       lprintf("frame->surface_id 0x%08x\n", frame->vaapi_accel_data.va_surface_id);
     }
   }
@@ -2438,11 +2446,6 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
     return vaStatus;
 
-  memset((uint8_t*)p_base + va_image->offsets[0],   0, va_image->pitches[0] * va_image->height);
-  memset((uint8_t*)p_base + va_image->offsets[1], 128, va_image->pitches[1] * ((va_image->height+1)/2));
-  if(va_image->pitches[2])
-    memset((uint8_t*)p_base + va_image->offsets[2], 128, va_image->pitches[2] * ((va_image->height+1)/2));
- 
   uint8_t *dst[3] = { NULL, };
 
   /* Copy xine frames into VAAPI images */
