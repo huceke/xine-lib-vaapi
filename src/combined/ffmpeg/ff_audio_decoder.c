@@ -80,13 +80,41 @@ typedef struct ff_audio_decoder_s {
 
 #include "ff_audio_list.h"
 
+#define malloc16(s) realloc16(NULL,s)
+#define free16(p) realloc16(p,0)
+
+static void *realloc16 (void *m, size_t s) {
+  unsigned int diff, diff2;
+  unsigned char *p = m, *q;
+  if (p) {
+    diff = p[-1];
+    if (s == 0) {
+      free (p - diff);
+      return (NULL);
+    }
+    q = realloc (p - diff, s + 16);
+    if (!q) return (q);
+    diff2 = 16 - ((unsigned int)q & 15);
+    if (diff2 != diff) memmove (q + diff2, q + diff, s);
+  } else {
+    if (s == 0) return (NULL);
+    q = malloc (s + 16);
+    if (!q) return (q);
+    diff2 = 16 - ((unsigned int)q & 15);
+  }
+  q += diff2;
+  q[-1] = diff2;
+  return (q);
+}
+
+
  static void ff_audio_ensure_buffer_size(ff_audio_decoder_t *this, int size) {
   if (size > this->bufsize) {
     this->bufsize = size + size / 2;
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
             _("ffmpeg_audio_dec: increasing buffer to %d to avoid overflow.\n"),
             this->bufsize);
-    this->buf = realloc( this->buf, this->bufsize );
+    this->buf = realloc16 (this->buf, this->bufsize);
   }
 }
 
@@ -246,7 +274,7 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
 
       this->size = 0;
 
-      this->decode_buffer = calloc(1, AVCODEC_MAX_AUDIO_FRAME_SIZE);
+      this->decode_buffer = malloc16 (AVCODEC_MAX_AUDIO_FRAME_SIZE);
 
       return;
     }
@@ -454,8 +482,8 @@ static void ff_audio_dispose (audio_decoder_t *this_gen) {
     this->stream->audio_out->close (this->stream->audio_out, this->stream);
   this->output_open = 0;
 
-  free(this->buf);
-  free(this->decode_buffer);
+  free16 (this->buf);
+  free16 (this->decode_buffer);
 
   if(this->context && this->context->extradata)
     free(this->context->extradata);

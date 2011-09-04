@@ -191,6 +191,7 @@ extern "C" {
 #define BUF_VIDEO_VC1		0x02650000
 #define BUF_VIDEO_VMNC		0x02660000
 #define BUF_VIDEO_SNOW		0x02670000
+#define BUF_VIDEO_VP8		0x02680000
 /*@}*/
 
 /**
