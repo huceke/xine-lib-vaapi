@@ -87,7 +87,6 @@ struct ff_vaapi_context_s {
   void              *gl_surface;
   unsigned int      soft_head;
   unsigned int      valid_context;
-  unsigned int      last_format;
   vo_driver_t       *driver;
   unsigned int      last_sub_image_fmt;
   struct SwsContext *convert_ctx;

@@ -1587,7 +1587,6 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
 
   vo_driver_t         *this_gen   = (vo_driver_t *) frame_gen->driver;
   vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
-  //ff_vaapi_context_t  *va_context = this->va_context;
 
   VAStatus vaStatus;
 
@@ -2391,7 +2390,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
       lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_VAAPI) {
-      va_context->last_format    = format;
       //frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
@@ -2451,7 +2449,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
   if(frame->format == XINE_IMGFMT_YV12) {
 
     if (va_image->format.fourcc == VA_FOURCC( 'Y', 'V', '1', '2' )) {
-      lprintf("softrender yv12 -> yv12 convert\n");
+      lprintf("vaapi_software_render_frame yv12 -> yv12 convert\n");
 
       dst[0] = (uint8_t *)p_base + va_image->offsets[0];
       dst[1] = (uint8_t *)p_base + va_image->offsets[2];
@@ -2461,9 +2459,9 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
                                                  va_image->width, va_image->height, PIX_FMT_YUV420P, 
                                                  SWS_FAST_BILINEAR, NULL, NULL, NULL);
     } else if (va_image->format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' )) {
-      lprintf("softrender yv12 -> nv12 convert\n");
+      lprintf("vaapi_software_render_frame yv12 -> nv12 convert\n");
 
-      dst[0] = (uint8_t *)p_base;
+      dst[0] = (uint8_t *)p_base + va_image->offsets[0];
       dst[1] = (uint8_t *)p_base + va_image->offsets[1];
       dst[2] = (uint8_t *)p_base + va_image->offsets[2];
 
@@ -2477,9 +2475,9 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
     }
   } else if (frame->format == XINE_IMGFMT_YUY2) {
 
-    printf("softrender yuy2 -> yv12 convert\n");
+    lprintf("vaapi_software_render_frame yuy2 -> yv12 convert\n");
 
-    dst[0] = (uint8_t *)p_base;
+    dst[0] = (uint8_t *)p_base + va_image->offsets[0];
     dst[1] = (uint8_t *)p_base + va_image->offsets[2];
     dst[2] = (uint8_t *)p_base + va_image->offsets[1];
 
@@ -2490,14 +2488,6 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
       sws_scale(va_context->convert_ctx, (const uint8_t * const*)frame_gen->base, frame_gen->pitches, 0, frame_gen->height, 
                   dst, va_image->pitches);
     }
-#if 0
-    yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
-           (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
-           (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
-           (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
-           frame_gen->width, frame_gen->height);
-#endif
-
   }
 
   vaUnmapBuffer(va_context->va_display, va_image->buf);
@@ -2659,10 +2649,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     if(last_sub_img_fmt)
       vaapi_ovl_associate(frame_gen, 0);
 
-    /*
-    printf("vaapi_display_frame init full context\n");
-    vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
-    */
     if(!va_context->valid_context) {
       printf("vaapi_display_frame init full context\n");
       vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
@@ -3131,11 +3117,8 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
     vaapi_dispose((vo_driver_t *)this);
     return NULL;
   }
-  /*
-  */
   vaapi_close((vo_driver_t *)this);
   this->va_context->valid_context = 0;
-  this->va_context->last_format   = 0;
   this->va_context->driver        = (vo_driver_t *)this;
   this->va_context->convert_ctx   = NULL;
 
