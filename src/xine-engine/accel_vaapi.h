@@ -42,6 +42,8 @@ extern "C" {
 #  include <libavcodec/avcodec.h>
 #endif
 
+#include <libswscale/swscale.h>
+
 #if LIBAVCODEC_VERSION_MAJOR >= 53 || (LIBAVCODEC_VERSION_MAJOR == 52 && LIBAVCODEC_VERSION_MINOR >= 32)
 #  define AVVIDEO 2
 #else
@@ -84,21 +86,22 @@ struct ff_vaapi_context_s {
   int               softrender;
   int               is_bound;
   void              *gl_surface;
-  int               va_osd_associated;
   unsigned int      soft_head;
   unsigned int      valid_context;
-  unsigned int      hw_render;
   unsigned int      last_format;
   vo_driver_t       *driver;
+  unsigned int      last_sub_image_fmt;
+  struct SwsContext *convert_ctx;
   struct vaapi_equalizer va_equalizer;
 };
 
 typedef struct {
   vo_frame_t                *vo_frame;
   VASurfaceID               va_surface_id;
+  VASurfaceID               va_soft_surface_id;
+  VAImage                   *va_soft_image;
 
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softrender);
-  void (*vaapi_reset)(vo_frame_t *frame_gen, int hwdecode);
   int (*profile_from_imgfmt)(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec);
   ff_vaapi_context_t *(*get_context)(vo_frame_t *frame_gen);
 } vaapi_accel_t;

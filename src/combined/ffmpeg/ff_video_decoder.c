@@ -1041,6 +1041,8 @@ static void ff_handle_preview_buffer (ff_video_decoder_t *this, buf_element_t *b
   }
 
   if (this->decoder_init_mode && !this->is_mpeg12) {
+    //if (!ff_check_extradata(this, buf))
+    //  return;
     init_video_codec(this, buf);
     init_postprocess(this);
     this->decoder_init_mode = 0;
@@ -1973,16 +1975,6 @@ static void ff_dispose (video_decoder_t *this_gen) {
   ff_video_decoder_t *this = (ff_video_decoder_t *) this_gen;
 
   lprintf ("ff_dispose\n");
-
-  if(this->class->enable_vaapi) {
-    vo_frame_t *accel_img  = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
-    
-    if(accel_img ) {
-      vaapi_accel_t *accel = (vaapi_accel_t*)accel_img->accel_data;
-      accel->vaapi_reset(accel_img, 0);
-      accel_img->free(accel_img);
-    }
-  }
 
   if (this->decoder_ok) {
     xine_list_iterator_t it;
