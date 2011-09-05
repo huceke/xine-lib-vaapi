@@ -34,11 +34,11 @@ video.output.vaapi_deinterlace:2
 
 # VAAPI Mpeg2 softdecoding
 # bool, default: 0
-#video.processing.vaapi_mpeg_sofdec:0
+#video.processing.vaapi_mpeg_softdec:0
 
 # VAAPI Mpeg2 softdecoding deinterlace
 # bool, default: 0
-#video.processing.vaapi_mpeg_sofdec_deinterlace:0
+#video.processing.vaapi_mpeg_softdec_deinterlace:0
 
 # vaapi: opengl output rendering
 # bool, default: 0
@@ -66,7 +66,7 @@ The workaround is needed, because vdr-xine does not report the real unscaled OSD
 
 When you get GPU hangs on Mpeg2 material set :
 
-video.processing.vaapi_mpeg_sofdec:1
+video.processing.vaapi_mpeg_softdec:1
 
 This disables VAAPI fpr Mpeg2.
 
