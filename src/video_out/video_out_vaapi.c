@@ -60,14 +60,7 @@
 #include <xine/xineutils.h>
 #include <xine/vo_scale.h>
 
-#include <GL/glu.h>
-#include <GL/glx.h>
-#include <GL/glext.h>
-#include <GL/gl.h>
-#include <dlfcn.h>
-
 #include <va/va_x11.h>
-#include <va/va_glx.h>
 
 #include "accel_vaapi.h"
 
@@ -202,7 +195,6 @@ static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image);
 static int vaapi_ovl_associate(vo_frame_t *frame_gen, int bShow);
 static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen);
 static const char *vaapi_profile_to_string(VAProfile profile);
-//static int nv12_to_yv12(unsigned char *src_in, unsigned char *dst_out, unsigned int len, unsigned int width, unsigned int height);
 
 static VADisplay vaapi_get_display(Display *display)
 {
@@ -414,36 +406,6 @@ static const char *vaapi_entrypoint_to_string(VAEntrypoint entrypoint)
   }
   return "<unknown>";
 }
-
-/*
-static int nv12_to_yv12(unsigned char *src_in, unsigned char *dst_out, unsigned int len, unsigned int width, unsigned int height) {
-
-  unsigned int Y_size  = width * height;
-  unsigned int UV_size = width * height / 4;
-  unsigned int idx;
-  unsigned char *dst_Y = dst_out;
-  unsigned char *dst_U = dst_out + width * height;
-  unsigned char *dst_V = dst_out + width * height * 5/4; 
-  unsigned char *src   = src_in + Y_size;
-
-  // sanity check raw stream
-  if ( (len != (Y_size + (UV_size<<1))) ) {
-    printf("hmblck: Image size inconsistent with data size.\n");
-    return 0;
-  }
-
-  // luma data is easy, just copy it
-  xine_fast_memcpy(dst_Y, src_in, Y_size);
-
-  // chroma data is interlaced UVUV... so deinterlace it
-  for(idx=0; idx<UV_size; idx++ ) {
-      *(dst_U + idx) = *(src + (idx<<1) + 0); 
-      *(dst_V + idx) = *(src + (idx<<1) + 1);
-  }
-
-  return 1;
-}
-*/
 
 /* Init subpicture */
 static void vaapi_init_subpicture(vaapi_driver_t *this_gen) {
