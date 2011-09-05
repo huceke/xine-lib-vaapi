@@ -182,16 +182,7 @@ struct vaapi_driver_s {
 
   unsigned int        deinterlace;
   
-  int                 valid_opengl_context;
-  int                 opengl_render;
-  int                 opengl_use_tfp;
   int                 query_va_status;
-
-  GLuint              gl_texture;
-  GLXContext          gl_context;
-  XVisualInfo         *gl_vinfo;
-  Pixmap              gl_pixmap;
-  Pixmap              gl_image_pixmap;
 
   ff_vaapi_context_t  *va_context;
 
@@ -200,8 +191,6 @@ struct vaapi_driver_s {
   vaapi_frame_t       *cur_frame;
 
   pthread_mutex_t     vaapi_lock;
-
-  unsigned int        reinit_rendering;
 };
 
 VASurfaceID         *va_surface_ids = NULL;
@@ -214,24 +203,12 @@ static int vaapi_ovl_associate(vo_frame_t *frame_gen, int bShow);
 static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen);
 static const char *vaapi_profile_to_string(VAProfile profile);
 //static int nv12_to_yv12(unsigned char *src_in, unsigned char *dst_out, unsigned int len, unsigned int width, unsigned int height);
-void (GLAPIENTRY *mpglGenTextures)(GLsizei, GLuint *);
-void (GLAPIENTRY *mpglBindTexture)(GLenum, GLuint);
-void (GLAPIENTRY *mpglXBindTexImage)(Display *, GLXDrawable, int, const int *);
-void (GLAPIENTRY *mpglXReleaseTexImage)(Display *, GLXDrawable, int);
-GLXPixmap (GLAPIENTRY *mpglXCreatePixmap)(Display *, GLXFBConfig, Pixmap, const int *);
-void (GLAPIENTRY *mpglXDestroyPixmap)(Display *, GLXPixmap);
-const GLubyte *(GLAPIENTRY *mpglGetString)(GLenum);
-void (GLAPIENTRY *mpglGenPrograms)(GLsizei, GLuint *);
 
-static VADisplay vaapi_get_display(Display *display, int opengl_render)
+static VADisplay vaapi_get_display(Display *display)
 {
   VADisplay ret;
 
-  if(opengl_render) {
-    ret = vaGetDisplayGLX(display);
-  } else {
-    ret = vaGetDisplay(display);
-  }
+  ret = vaGetDisplay(display);
 
   if(vaDisplayIsValid(ret))
     return ret;
@@ -252,553 +229,11 @@ static int vaapi_check_status(vo_driver_t *this_gen, VAStatus vaStatus, const ch
 }
 
 typedef struct {
-  void *funcptr;
-  const char *extstr;
-  const char *funcnames[7];
-  void *fallback;
-} extfunc_desc_t;
-
-#define DEF_FUNC_DESC(name) {&mpgl##name, NULL, {"gl"#name, NULL}, gl ##name}
-static const extfunc_desc_t extfuncs[] = {
-  DEF_FUNC_DESC(GenTextures),
-
-  {&mpglBindTexture, NULL, {"glBindTexture", "glBindTextureARB", "glBindTextureEXT", NULL}},
-  {&mpglXBindTexImage, "GLX_EXT_texture_from_pixmap", {"glXBindTexImageEXT", NULL}},
-  {&mpglXReleaseTexImage, "GLX_EXT_texture_from_pixmap", {"glXReleaseTexImageEXT", NULL}},
-  {&mpglXCreatePixmap, "GLX_EXT_texture_from_pixmap", {"glXCreatePixmap", NULL}},
-  {&mpglXDestroyPixmap, "GLX_EXT_texture_from_pixmap", {"glXDestroyPixmap", NULL}},
-  {&mpglGenPrograms, "_program", {"glGenProgramsARB", NULL}},
-  {NULL}
-};
-
-typedef struct {
   video_driver_class_t driver_class;
 
   config_values_t     *config;
   xine_t              *xine;
 } vaapi_class_t;
-
-static int gl_visual_attr[] = {
-  GLX_RGBA,
-  GLX_RED_SIZE, 1,
-  GLX_GREEN_SIZE, 1,
-  GLX_BLUE_SIZE, 1,
-  GLX_DOUBLEBUFFER,
-  GL_NONE
-};
-
-/* X11 Error handler and error functions */
-static int vaapi_x11_error_code = 0;
-static int (*vaapi_x11_old_error_handler)(Display *, XErrorEvent *);
-
-static int vaapi_x11_error_handler(Display *dpy, XErrorEvent *error)
-{
-    vaapi_x11_error_code = error->error_code;
-    return 0;
-}
-
-static void vaapi_x11_trap_errors(void)
-{
-    vaapi_x11_error_code    = 0;
-    vaapi_x11_old_error_handler = XSetErrorHandler(vaapi_x11_error_handler);
-}
-
-static int vaapi_x11_untrap_errors(void)
-{
-    XSetErrorHandler(vaapi_x11_old_error_handler);
-    return vaapi_x11_error_code;
-}
-
-static void vaapi_appendstr(char **dst, const char *str)
-{
-    int newsize;
-    char *newstr;
-    if (!str)
-        return;
-    newsize = strlen(*dst) + 1 + strlen(str) + 1;
-    newstr = realloc(*dst, newsize);
-    if (!newstr)
-        return;
-    *dst = newstr;
-    strcat(*dst, " ");
-    strcat(*dst, str);
-}
-
-/* Return the address of a linked function */
-static void *vaapi_getdladdr (const char *s) {
-  void *ret = NULL;
-  void *handle = dlopen(NULL, RTLD_LAZY);
-  if (!handle)
-    return NULL;
-  ret = dlsym(handle, s);
-  dlclose(handle);
-
-  return ret;
-}
-
-/* Resolve opengl functions. */
-static void vaapi_get_functions(vo_driver_t *this_gen, void *(*getProcAddress)(const GLubyte *),
-                         const char *ext2) {
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
-  const extfunc_desc_t *dsc;
-  const char *extensions;
-  char *allexts;
-
-  if (!getProcAddress)
-    getProcAddress = (void *)vaapi_getdladdr;
-
-  /* special case, we need glGetString before starting to find the other functions */
-  mpglGetString = getProcAddress("glGetString");
-  if (!mpglGetString)
-      mpglGetString = glGetString;
-
-  extensions = (const char *)mpglGetString(GL_EXTENSIONS);
-  if (!extensions) extensions = "";
-  if (!ext2) ext2 = "";
-  allexts = malloc(strlen(extensions) + strlen(ext2) + 2);
-  strcpy(allexts, extensions);
-  strcat(allexts, " ");
-  strcat(allexts, ext2);
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " OpenGL extensions string:\n%s\n", allexts);
-  for (dsc = extfuncs; dsc->funcptr; dsc++) {
-    void *ptr = NULL;
-    int i;
-    if (!dsc->extstr || strstr(allexts, dsc->extstr)) {
-      for (i = 0; !ptr && dsc->funcnames[i]; i++)
-        ptr = getProcAddress((const GLubyte *)dsc->funcnames[i]);
-    }
-    if (!ptr)
-        ptr = dsc->fallback;
-    *(void **)dsc->funcptr = ptr;
-  }
-  printf("\n");
-  free(allexts);
-}
-
-/* Check if opengl indirect/software rendering is used */
-static int vaapi_opengl_verify_direct (x11_visual_t *vis) {
-  Window        root, win;
-  XVisualInfo  *visinfo;
-  GLXContext    ctx;
-  XSetWindowAttributes xattr;
-  int           ret = 0;
-
-  if (!vis || !vis->display || ! (root = RootWindow (vis->display, vis->screen))) {
-    fprintf (stderr, "vo_vaapi: Don't have a root window to verify\n");
-    return 0;
-  }
-
-  if (! (visinfo = glXChooseVisual (vis->display, vis->screen, gl_visual_attr)))
-    return 0;
-
-  if (! (ctx = glXCreateContext (vis->display, visinfo, NULL, 1)))
-    return 0;
-
-  memset (&xattr, 0, sizeof (xattr));
-  xattr.colormap = XCreateColormap(vis->display, root, visinfo->visual, AllocNone);
-  xattr.event_mask = StructureNotifyMask | ExposureMask;
-
-  if ( (win = XCreateWindow (vis->display, root, 0, 0, 1, 1, 0, visinfo->depth,
-			                       InputOutput, visinfo->visual,
-			                       CWBackPixel | CWBorderPixel | CWColormap | CWEventMask,
-			                       &xattr))) {
-    if (glXMakeCurrent (vis->display, win, ctx)) {
-	    const char *renderer = (const char *) glGetString(GL_RENDERER);
-	    if (glXIsDirect (vis->display, ctx) &&
-	                ! strstr (renderer, "Software") &&
-	                ! strstr (renderer, "Indirect"))
-	      ret = 1;
-	      glXMakeCurrent (vis->display, None, NULL);
-      }
-      XDestroyWindow (vis->display, win);
-  }
-  glXDestroyContext (vis->display, ctx);
-  XFreeColormap     (vis->display, xattr.colormap);
-
-  return ret;
-}
-
-static int vaapi_glx_bind_texture(vo_driver_t *this_gen)
-{
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
-  glEnable(GL_TEXTURE_2D);
-  mpglBindTexture(GL_TEXTURE_2D, this->gl_texture);
-
-  if (this->opengl_use_tfp) {
-    vaapi_x11_trap_errors();
-    mpglXBindTexImage(this->display, this->gl_pixmap, GLX_FRONT_LEFT_EXT, NULL);
-    XSync(this->display, False);
-    if (vaapi_x11_untrap_errors())
-      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_bind_texture : Update bind_tex_image failed\n");
-  }
-
-  return 0;
-}
-
-static int vaapi_glx_unbind_texture(vo_driver_t *this_gen)
-{
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
-  if (this->opengl_use_tfp) {
-    vaapi_x11_trap_errors();
-    mpglXReleaseTexImage(this->display, this->gl_pixmap, GLX_FRONT_LEFT_EXT);
-    if (vaapi_x11_untrap_errors())
-      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_unbind_texture : Failed to release?\n");
-  }
-
-  mpglBindTexture(GL_TEXTURE_2D, 0);
-  glDisable(GL_TEXTURE_2D);
-  return 0;
-}
-
-static void vaapi_glx_render_frame(vo_frame_t *frame_gen, int left, int top, int right, int bottom)
-{
-  vaapi_driver_t        *this = (vaapi_driver_t *) frame_gen->driver;
-  vaapi_frame_t         *frame = (vaapi_frame_t *) frame_gen;
-  ff_vaapi_context_t    *va_context = this->va_context;
-  int             x1, x2, y1, y2;
-  float           tx, ty;
-
-  if (vaapi_glx_bind_texture(frame_gen->driver) < 0)
-    return;
-
-  /* Calc texture/rectangle coords */
-  x1 = this->sc.output_xoffset;
-  y1 = this->sc.output_yoffset;
-  x2 = x1 + this->sc.output_width;
-  y2 = y1 + this->sc.output_height;
-  tx = (float) frame->width  / va_context->width;
-  ty = (float) frame->height / va_context->height;
-
-  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-  /* Draw quad */
-  glBegin (GL_QUADS);
-
-    glTexCoord2f (tx, ty);   glVertex2i (x2, y2);
-    glTexCoord2f (0,  ty);   glVertex2i (x1, y2);
-    glTexCoord2f (0,  0);    glVertex2i (x1, y1);
-    glTexCoord2f (tx, 0);    glVertex2i (x2, y1);
-    lprintf("render_frame left %d top %d right %d bottom %d\n", x1, y1, x2, y2);
-
-  glEnd ();
-
-  if (vaapi_glx_unbind_texture(frame_gen->driver) < 0)
-    return;
-}
-
-static void vaapi_glx_flip_page(vo_frame_t *frame_gen, int left, int top, int right, int bottom)
-{
-  vaapi_driver_t *this = (vaapi_driver_t *) frame_gen->driver;
-
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  vaapi_glx_render_frame(frame_gen, left, top, right, bottom);
-
-  //if (gl_finish)
-  //  glFinish();
-
-  glXSwapBuffers(this->display, this->drawable);
-
-}
-
-static void destroy_glx(vo_driver_t *this_gen)
-{
-  vaapi_driver_t        *this       = (vaapi_driver_t *) this_gen;
-  ff_vaapi_context_t    *va_context = this->va_context;
-
-  if(!this->opengl_render || !this->valid_opengl_context)
-    return;
-
-  //if (gl_finish)
-  //  glFinish();
-
-  if(va_context->gl_surface) {
-    VAStatus vaStatus = vaDestroySurfaceGLX(va_context->va_display, va_context->gl_surface);
-    vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaceGLX()");
-    va_context->gl_surface = NULL;
-  }
-
-  if(this->gl_pixmap) {
-    vaapi_x11_trap_errors();
-    mpglXDestroyPixmap(this->display, this->gl_pixmap);
-    XSync(this->display, False);
-    vaapi_x11_untrap_errors();
-    this->gl_pixmap = None;
-  }
-
-  if(this->gl_image_pixmap) {
-    XFreePixmap(this->display, this->gl_image_pixmap);
-    this->gl_image_pixmap = None;
-  }
-
-  if(this->gl_texture) {
-    glDeleteTextures(1, &this->gl_texture);
-    this->gl_texture = GL_NONE;
-  }
-
-  if(this->gl_context) {
-    glXMakeCurrent(this->display, None, NULL);
-    glXDestroyContext(this->display, this->gl_context);
-    this->gl_context = 0;
-  }
-
-  if(this->gl_vinfo) {
-    XFree(this->gl_vinfo);
-    this->gl_vinfo = NULL;
-  }
-
-  this->valid_opengl_context = 0;
-}
-
-static GLXFBConfig *get_fbconfig_for_depth(vo_driver_t *this_gen, int depth)
-{
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
-    GLXFBConfig *fbconfigs, *ret = NULL;
-    int          n_elements, i, found;
-    int          db, stencil, alpha, rgba, value;
-
-    static GLXFBConfig *cached_config = NULL;
-    static int          have_cached_config = 0;
-
-    if (have_cached_config)
-        return cached_config;
-
-    fbconfigs = glXGetFBConfigs(this->display, this->screen, &n_elements);
-
-    db      = SHRT_MAX;
-    stencil = SHRT_MAX;
-    rgba    = 0;
-
-    found = n_elements;
-
-    for (i = 0; i < n_elements; i++) {
-        XVisualInfo *vi;
-        int          visual_depth;
-
-        vi = glXGetVisualFromFBConfig(this->display, fbconfigs[i]);
-        if (!vi)
-            continue;
-
-        visual_depth = vi->depth;
-        XFree(vi);
-
-        if (visual_depth != depth)
-            continue;
-
-        glXGetFBConfigAttrib(this->display, fbconfigs[i], GLX_ALPHA_SIZE, &alpha);
-        glXGetFBConfigAttrib(this->display, fbconfigs[i], GLX_BUFFER_SIZE, &value);
-        if (value != depth && (value - alpha) != depth)
-            continue;
-
-        value = 0;
-        if (depth == 32) {
-            glXGetFBConfigAttrib(this->display, fbconfigs[i],
-                                 GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
-            if (value)
-                rgba = 1;
-        }
-
-        if (!value) {
-            if (rgba)
-                continue;
-
-            glXGetFBConfigAttrib(this->display, fbconfigs[i],
-                                 GLX_BIND_TO_TEXTURE_RGB_EXT, &value);
-            if (!value)
-                continue;
-        }
-
-        glXGetFBConfigAttrib(this->display, fbconfigs[i], GLX_DOUBLEBUFFER, &value);
-        if (value > db)
-            continue;
-        db = value;
-
-        glXGetFBConfigAttrib(this->display, fbconfigs[i], GLX_STENCIL_SIZE, &value);
-        if (value > stencil)
-            continue;
-        stencil = value;
-
-        found = i;
-    }
-
-    if (found != n_elements) {
-        ret = malloc(sizeof(*ret));
-        *ret = fbconfigs[found];
-    }
-
-    if (n_elements)
-        XFree(fbconfigs);
-
-    have_cached_config = 1;
-    cached_config = ret;
-    return ret;
-}
-
-static int vaapi_glx_config_tfp(vo_driver_t *this_gen, unsigned int width, unsigned int height)
-{
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
-  GLXFBConfig *fbconfig;
-  int attribs[7], i = 0;
-  const int depth = 24;
-
-  if (!mpglXBindTexImage || !mpglXReleaseTexImage) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_tfp : No GLX texture-from-pixmap extension available\n");
-    return 0;
-  }
-
-  if (depth != 24 && depth != 32) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_tfp : color depth wrong.\n");
-    return 0;
-  }
-
-  this->gl_image_pixmap = XCreatePixmap(this->display, this->drawable, width, height, depth);
-  if (!this->gl_image_pixmap) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_tfp : Could not create X11 pixmap\n");
-    return 0;
-  }
-
-  fbconfig = get_fbconfig_for_depth(this_gen, depth);
-  if (!fbconfig) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_tfp : Could not find an FBConfig for 32-bit pixmap\n");
-    return 0;
-  }
-
-  attribs[i++] = GLX_TEXTURE_TARGET_EXT;
-  attribs[i++] = GLX_TEXTURE_2D_EXT;
-  attribs[i++] = GLX_TEXTURE_FORMAT_EXT;
-  if (depth == 24)
-    attribs[i++] = GLX_TEXTURE_FORMAT_RGB_EXT;
-  else if (depth == 32)
-    attribs[i++] = GLX_TEXTURE_FORMAT_RGBA_EXT;
-  attribs[i++] = GLX_MIPMAP_TEXTURE_EXT;
-  attribs[i++] = GL_FALSE;
-  attribs[i++] = None;
-
-  vaapi_x11_trap_errors();
-  this->gl_pixmap = mpglXCreatePixmap(this->display, *fbconfig, this->gl_image_pixmap, attribs);
-  XSync(this->display, False);
-  if (vaapi_x11_untrap_errors()) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_tfp : Could not create GLX pixmap\n");
-    return 0;
-  }
-
-  return 1;
-}
-
-static int vaapi_glx_config_glx(vo_driver_t *this_gen, unsigned int width, unsigned int height)
-{
-  vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
-  ff_vaapi_context_t    *va_context = this->va_context;
-
-  this->gl_vinfo = glXChooseVisual(this->display, this->screen, gl_visual_attr);
-  if(!this->gl_vinfo) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : error glXChooseVisual\n");
-    this->opengl_render = 0;
-  }
-
-  glXMakeCurrent(this->display, None, NULL);
-  this->gl_context = glXCreateContext (this->display, this->gl_vinfo, NULL, True);
-  if (this->gl_context) {
-    if(!glXMakeCurrent (this->display, this->drawable, this->gl_context)) {
-      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : error glXMakeCurrent\n");
-      goto error;
-    }
-  } else {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : error glXCreateContext\n");
-    goto error;
-  }
-
-  void *(*getProcAddress)(const GLubyte *);
-  const char *(*glXExtStr)(Display *, int);
-  char *glxstr = strdup("");
-
-  getProcAddress = vaapi_getdladdr("glXGetProcAddress");
-  if (!getProcAddress)
-    getProcAddress = vaapi_getdladdr("glXGetProcAddressARB");
-  glXExtStr = vaapi_getdladdr("glXQueryExtensionsString");
-  if (glXExtStr)
-      vaapi_appendstr(&glxstr, glXExtStr(this->display, this->screen));
-  glXExtStr = vaapi_getdladdr("glXGetClientString");
-  if (glXExtStr)
-      vaapi_appendstr(&glxstr, glXExtStr(this->display, GLX_EXTENSIONS));
-  glXExtStr = vaapi_getdladdr("glXGetServerString");
-  if (glXExtStr)
-      vaapi_appendstr(&glxstr, glXExtStr(this->display, GLX_EXTENSIONS));
-
-  vaapi_get_functions(this_gen, getProcAddress, glxstr);
-  if (!mpglGenPrograms && mpglGetString &&
-      getProcAddress &&
-      strstr(mpglGetString(GL_EXTENSIONS), "GL_ARB_vertex_program")) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : Broken glXGetProcAddress detected, trying workaround\n");
-    vaapi_get_functions(this_gen, NULL, glxstr);
-  }
-  free(glxstr);
-
-  glDisable(GL_DEPTH_TEST);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_CULL_FACE);
-  glEnable(GL_TEXTURE_2D);
-  glDrawBuffer(GL_BACK);
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  /* Create TFP resources */
-  if(this->opengl_use_tfp && vaapi_glx_config_tfp(this_gen, width, height)) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : Using GLX texture-from-pixmap extension\n");
-  } else {
-    this->opengl_use_tfp = 0;
-  }
-
-  /* Create OpenGL texture */
-  /* XXX: assume GL_ARB_texture_non_power_of_two is available */
-  glEnable(GL_TEXTURE_2D);
-  glGenTextures(1, &this->gl_texture);
-  mpglBindTexture(GL_TEXTURE_2D, this->gl_texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  if (!this->opengl_use_tfp) {
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
-                 GL_BGRA, GL_UNSIGNED_BYTE, NULL);
-  }
-  mpglBindTexture(GL_TEXTURE_2D, 0);
-  glDisable(GL_TEXTURE_2D);
-
-  glClearColor(0.0, 0.0, 0.0, 1.0);
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  if(!this->gl_texture) {
-    xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : gl_texture NULL\n");
-    goto error;
-  }
-
-  if(!this->opengl_use_tfp) {
-    VAStatus vaStatus = vaCreateSurfaceGLX(va_context->va_display, GL_TEXTURE_2D, this->gl_texture, &va_context->gl_surface);
-    if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaceGLX()")) {
-      va_context->gl_surface = NULL;
-      goto error;
-    }
-  } else {
-    va_context->gl_surface = NULL;
-  }
-
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : GL setup done\n");
-
-  this->valid_opengl_context = 1;
-  return 1;
-
-error:
-  destroy_glx(this_gen);
-  this->valid_opengl_context = 0;
-  return 0;
-}
 
 static uint32_t vaapi_get_capabilities (vo_driver_t *this_gen) {
   vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
@@ -821,19 +256,6 @@ static const struct {
   {IMGFMT_VAAPI_VC1,       PIX_FMT_VAAPI_VLD,  CODEC_ID_VC1},
   {0, PIX_FMT_NONE}
 };
-
-/*
-static enum PixelFormat vaapi_imgfmt2pixfmt(int fmt)
-{
-    int i;
-    enum PixelFormat pix_fmt;
-    for (i = 0; conversion_map[i].fmt; i++)
-        if (conversion_map[i].fmt == fmt)
-            break;
-    pix_fmt = conversion_map[i].pix_fmt;
-    return pix_fmt;
-}
-*/
 
 static int vaapi_pixfmt2imgfmt(enum PixelFormat pix_fmt, int codec_id)
 {
@@ -876,7 +298,7 @@ static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, 
 
   memset(&va_context, 0x0, sizeof(ff_vaapi_context_t));
 
-  va_context.va_display = vaapi_get_display(this->display, this->opengl_render);
+  va_context.va_display = vaapi_get_display(this->display);
 
   if(!va_context.va_display)
     goto out;
@@ -1054,7 +476,6 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_colorspace             = 1;
   this->cur_frame                       = NULL;
   va_context->is_bound                  = 0;
-  va_context->gl_surface                = NULL;
   va_context->soft_head                 = 0;
   va_context->valid_context             = 0;
 
@@ -1106,8 +527,6 @@ static void vaapi_close(vo_driver_t *this_gen) {
       }
     }
   }
-
-  destroy_glx((vo_driver_t *)this);
 
   if(va_context->va_config_id != VA_INVALID_ID)
     vaDestroyConfig(va_context->va_display, va_context->va_config_id);
@@ -1490,7 +909,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   vaapi_close(this_gen);
   vaapi_init_va_context(this);
 
-  va_context->va_display = vaapi_get_display(this->display, this->opengl_render);
+  va_context->va_display = vaapi_get_display(this->display);
 
   if(!va_context->va_display)
     goto error;
@@ -1509,7 +928,6 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
     if(strncmp(p, "VDPAU", strlen("VDPAU")) == 0) {
       xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Enable Splitted-Desktop Systems VDPAU workarounds. Please contact Splitted-Desktop to fix this missbehavior. VAAPI will not work stable without a working vaQuerySurfaceStatus extension.\n");
       this->query_va_status = 0;
-      this->opengl_use_tfp = 0;
       break;
     }
   }
@@ -1587,8 +1005,6 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
 
   vaapi_display_attribs((vo_driver_t *)this);
 
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender     : %d\n", this->opengl_render);
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender tfp : %d\n", this->opengl_use_tfp);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : brightness    : %d\n", va_context->va_equalizer.brightness.value);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : contrast      : %d\n", va_context->va_equalizer.contrast.value);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : hue           : %d\n", va_context->va_equalizer.hue.value);
@@ -2136,23 +1552,6 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
     if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
       _x_vo_scale_compute_output_size( &this->sc );
 
-      int width = this->sc.gui_width;
-      int height = this->sc.gui_height;
-
-      if(this->opengl_render && this->valid_opengl_context) {
-        glViewport(0, 0, width, height);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
-        glScalef(1.0f / (GLfloat)width, 
-                 -1.0f / (GLfloat)height,
-                 1.0f / (GLfloat)width);
-        glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
-      }
-  
     }
     ret = 1;
   } else {
@@ -2581,9 +1980,6 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
   if(!va_context->valid_context || va_surface_id == VA_INVALID_SURFACE)
     return VA_STATUS_ERROR_UNKNOWN;
 
-  if(this->opengl_render && !this->valid_opengl_context)
-    return VA_STATUS_ERROR_UNKNOWN;
-
   /* Final VAAPI rendering. The deinterlacing can be controled by xine config.*/
   unsigned int deint = this->deinterlace;
   for(i = 0; i <= !!((deint > 1) && interlaced_frame); i++) {
@@ -2598,37 +1994,13 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
             this->sc.output_width, this->sc.output_height,
             interlaced_frame, top_field_first);
 
-    if(this->opengl_render) {
-
-      vaapi_x11_trap_errors();
-
-      if(this->opengl_use_tfp) {
-        lprintf("opengl render tfp\n");
-        vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->gl_image_pixmap,
-                 0, 0, width, height, 0, 0, width, height, NULL, 0, flags);
-        if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
-          return vaStatus;
-      } else {
-        lprintf("opengl render\n");
-        vaStatus = vaCopySurfaceGLX(va_context->va_display, va_context->gl_surface, va_surface_id, flags);
-        if(!vaapi_check_status(this_gen, vaStatus, "vaCopySurfaceGLX()"))
-          return vaStatus;
-      }
-      if(vaapi_x11_untrap_errors())
-        return VA_STATUS_ERROR_UNKNOWN;
-      
-      vaapi_glx_flip_page(frame_gen, 0, 0, va_context->width, va_context->height);
-
-    } else {
-
-      vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->drawable,
+    vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->drawable,
                    0, 0, width, height,
                    this->sc.output_xoffset, this->sc.output_yoffset,
                    this->sc.output_width, this->sc.output_height,
                    NULL, 0, flags);
-      if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
-        return vaStatus;
-    }
+    if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
+      return vaStatus;
   }
   return VA_STATUS_SUCCESS;
 }
@@ -2728,33 +2100,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
-  /* The opengl rendering is not inititalized till here.
-   * Lets do the opengl magic and inititalize it.
-   * Opengl init must be done before redraw 
-   */
-  if(this->opengl_render && !this->valid_opengl_context && va_context->valid_context) {
-    if(vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height))
-      this->sc.force_redraw = 1;
-  }
-
-  /* reinit of the rendering was triggered */
-  if(this->reinit_rendering) {
-    unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
-
-    if(last_sub_img_fmt)
-      vaapi_ovl_associate(frame_gen, 0);
-
-    destroy_glx(this_gen);
-
-    if(this->opengl_render && va_context->valid_context)
-      vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
-
-    if(last_sub_img_fmt)
-      vaapi_ovl_associate(frame_gen, 1);
-
-    this->sc.force_redraw = 1;
-    this->reinit_rendering = 0;
-  }
 
   double start_time;
   double end_time;
@@ -2940,12 +2285,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     pthread_mutex_lock(&this->vaapi_lock);
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
-
-    this->reinit_rendering = 1;
-    destroy_glx(this_gen);
-
     this->drawable = (Drawable) data;
-
     XUnlockDisplay( this->display );
     pthread_mutex_unlock(&this->vaapi_lock);
     this->sc.force_redraw = 1;
@@ -3034,24 +2374,6 @@ static void vaapi_deinterlace_flag( void *this_gen, xine_cfg_entry_t *entry )
   fprintf(stderr, "vo_vaapi: deinterlace=%d\n", this->deinterlace );
 }
 
-static void vaapi_opengl_render( void *this_gen, xine_cfg_entry_t *entry )
-{
-  vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
-
-  this->opengl_render = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: opengl_render=%d\n", this->opengl_render );
-}
-
-static void vaapi_opengl_use_tfp( void *this_gen, xine_cfg_entry_t *entry )
-{
-  vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
-
-  this->opengl_use_tfp = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: opengl_use_tfp=%d\n", this->opengl_use_tfp );
-}
-
 static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const void *visual_gen) {
 
   vaapi_class_t           *class  = (vaapi_class_t *) class_gen;
@@ -3084,27 +2406,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
    * locks with vdpau_h264 */
   if(frame_num != RENDER_SURFACES)
     config->update_num(config,"engine.buffers.video_num_frames", RENDER_SURFACES);
-
-  this->opengl_render = config->register_bool( config, "video.output.vaapi_opengl_render", 0,
-        _("vaapi: opengl output rendering"),
-        _("vaapi: opengl output rendering"),
-        20, vaapi_opengl_render, this );
-
-  this->opengl_use_tfp = config->register_bool( config, "video.output.vaapi_opengl_use_tfp", 0,
-        _("vaapi: opengl rendering tfp"),
-        _("vaapi: opengl rendering tfp"),
-        20, vaapi_opengl_use_tfp, this );
-
-  if(this->opengl_render) {
-      this->opengl_render = vaapi_opengl_verify_direct ((x11_visual_t *)visual_gen);
-      if(!this->opengl_render)
-        xprintf (this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Opengl indirect/software rendering does not work. Fallback to plain VAAPI output !!!!\n");
-  }
-
-  this->valid_opengl_context            = 0;
-  this->gl_vinfo                        = NULL;
-  this->gl_pixmap                       = None;
-  this->gl_image_pixmap                 = None;
 
   this->num_frame_buffers               = 0;
 
@@ -3148,7 +2449,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->deinterlace                    = 0;
   this->vdr_osd_width                  = 0;
   this->vdr_osd_height                 = 0;
-  this->reinit_rendering               = 0;
   this->cur_frame                      = NULL;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
@@ -3185,7 +2485,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Deinterlace : %d\n", this->deinterlace);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Render surfaces : %d\n", RENDER_SURFACES);
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Opengl render : %d\n", this->opengl_render);
 
   return &this->vo_driver;
 }

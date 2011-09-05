@@ -84,7 +84,6 @@ struct ff_vaapi_context_s {
   int               va_subpic_width;
   int               va_subpic_height;
   int               is_bound;
-  void              *gl_surface;
   unsigned int      soft_head;
   unsigned int      valid_context;
   vo_driver_t       *driver;

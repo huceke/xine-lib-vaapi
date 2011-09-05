@@ -40,15 +40,6 @@ video.output.vaapi_deinterlace:2
 # bool, default: 0
 #video.processing.vaapi_mpeg_softdec_deinterlace:0
 
-# vaapi: opengl output rendering
-# bool, default: 0
-#video.output.vaapi_opengl_render:0
-
-# vaapi: opengl rendering tfp
-# bool, default: 0
-#video.output.vaapi_opengl_use_tfp:0
-
-
 Notes on use with VDR. The OSD will have some delay. This is technical and can only be overcome
 writting a complete new decoder which use VAAPI direct and not ffmpeg.
 
@@ -74,12 +65,5 @@ This disables VAAPI fpr Mpeg2.
 You can use example.config.vaapi as an example config for xine.
 
 Call xine like : xine -V vaapi video.mkv
-
-xvba-vaapi hints:
-
-export LIBVA_DRIVER_NAME=xvba
-export LIBVA_DRIVERS_PATH=/usr/lib/dri/
-video.output.vaapi_opengl_render:1
-
 
 Postprocessing does not work. Do not use "--post vdr_video --post vdr-audio --post vdr" in your xine call.

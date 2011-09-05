@@ -374,11 +374,11 @@ video.driver:vaapi
 
 # VAAPI Mpeg2 softdecoding
 # bool, default: 0
-#video.processing.vaapi_mpeg_sofdec:0
+#video.processing.vaapi_mpeg_softdec:0
 
 # VAAPI Mpeg2 softdecoding deinterlace
 # bool, default: 0
-#video.processing.vaapi_mpeg_sofdec_deinterlace:0
+#video.processing.vaapi_mpeg_softdec_deinterlace:0
 
 # Gerät für CD-Audio
 # string, default: /dev/cdrom
