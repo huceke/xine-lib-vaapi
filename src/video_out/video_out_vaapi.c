@@ -2453,7 +2453,7 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.base[0] = av_mallocz (frame->vo_frame.pitches[0] * height + FF_INPUT_BUFFER_PADDING_SIZE);
       frame->vo_frame.proc_duplicate_frame_data = NULL;
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
-      printf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
+      lprintf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_VAAPI) {
       frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
