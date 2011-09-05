@@ -2262,7 +2262,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
         } else if( va_image.format.fourcc == VA_FOURCC('N','V','1','2') ) {
           lprintf("VAAPI NV12 image\n");
 
-          printf("va_image.offsets[0] %d va_image.offsets[1] %d va_image.offsets[2] %d size %d size %d size %d width %d height %d width %d height %d\n",
+          lprintf("va_image.offsets[0] %d va_image.offsets[1] %d va_image.offsets[2] %d size %d size %d size %d width %d height %d width %d height %d\n",
               va_image.offsets[0], va_image.offsets[1], va_image.offsets[2], va_image.data_size, va_image.width * va_image.height,
               data->img_size, this->width, this->height, va_image.width, va_image.height);
 
@@ -2333,6 +2333,8 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
   VAImage   va_image_orig;
   VAImage   va_image_this;
   VAStatus  vaStatus;
+  void      *p_base_orig = NULL;
+  void      *p_base_this = NULL;
 
   vaSyncSurface(va_context->va_display, accel_orig->va_surface_id);
 
@@ -2365,13 +2367,37 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
   }
 
   if(vaapi_check_status(va_context->driver, vaStatus, "vaGetImage()")) {
-    vaStatus = vaPutImage(va_context->va_display, accel_this->va_surface_id, va_image_orig.image_id,
-               0, 0, va_image_orig.width, va_image_orig.height,
-               0, 0, va_image_this.width, va_image_this.height);
-    vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()");
+    
+    if(!va_context->is_bound) {
+      vaStatus = vaPutImage(va_context->va_display, accel_this->va_surface_id, va_image_orig.image_id,
+                            0, 0, va_image_orig.width, va_image_orig.height,
+                            0, 0, va_image_this.width, va_image_this.height);
+      vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()");
+    } else {
+      vaStatus = vaMapBuffer( va_context->va_display, va_image_orig.buf, &p_base_orig ) ;
+      if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
+        goto error;
+
+      vaStatus = vaMapBuffer( va_context->va_display, va_image_this.buf, &p_base_this ) ;
+      if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
+        goto error;
+
+      int size = (va_image_orig.data_size > va_image_this.data_size) ? va_image_this.data_size : va_image_orig.data_size;
+      xine_fast_memcpy((uint8_t *) p_base_this, (uint8_t *) p_base_orig, size);
+
+    }
   }
 
 error:
+  if(p_base_orig) {
+    vaStatus = vaUnmapBuffer(va_context->va_display, va_image_orig.buf);
+    vaapi_check_status(va_context->driver, vaStatus, "vaUnmapBuffer()");
+  }
+  if(p_base_this) {
+    vaStatus = vaUnmapBuffer(va_context->va_display, va_image_this.buf);
+    vaapi_check_status(va_context->driver, vaStatus, "vaUnmapBuffer()");
+  }
+
   vaapi_destroy_image(va_context->driver, &va_image_orig);
   vaapi_destroy_image(va_context->driver, &va_image_this);
 
@@ -2429,7 +2455,6 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.proc_provide_standard_frame_data = NULL;
       printf("XINE_IMGFMT_YUY2 width %d height %d\n", width, height);
     } else if (format == XINE_IMGFMT_VAAPI) {
-      //frame->vo_frame.proc_provide_standard_frame_data = NULL;
       frame->vo_frame.proc_duplicate_frame_data = vaapi_duplicate_frame_data;
       frame->vo_frame.proc_provide_standard_frame_data = vaapi_provide_standard_frame_data;
       lprintf("XINE_IMGFMT_VAAPI width %d height %d\n", width, height);
