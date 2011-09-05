@@ -1181,7 +1181,6 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
         vaStatus = vaCreateImage( va_context->va_display, &va_p_fmt[i], width, height, va_image );
         if(!vaapi_check_status(this_gen, vaStatus, "vaCreateImage()"))
           goto error;
-        printf("create image\n");
         break;
       }
     }
@@ -1394,7 +1393,7 @@ static void vaapi_set_background_color(vo_driver_t *this_gen) {
   VADisplayAttribute attr;
   memset( &attr, 0, sizeof(attr) );
 
-  attr.value = 0x010101;
+  attr.value = 0x000000;
 
   attr.type  = VADisplayAttribBackgroundColor;
   vaStatus = vaSetDisplayAttributes(va_context->va_display, &attr, 1);
@@ -2592,7 +2591,7 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
 
     //flags |= vaapi_get_colorspace_flags(this_gen);
 
-    flags |= VA_CLEAR_DRAWABLE;
+    //flags |= VA_CLEAR_DRAWABLE;
 
     lprintf("Putsrfc srfc 0x%08X flags 0x%08x %dx%d -> %dx%d interlaced %d top_field_first %d\n", 
             va_surface_id, flags, width, height, 
