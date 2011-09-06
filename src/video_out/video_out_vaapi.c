@@ -73,8 +73,8 @@
 
 #include <libswscale/swscale.h>
 
-#define  RENDER_SURFACES  21
-#define  SOFT_SURFACES    21
+#define  RENDER_SURFACES  30
+#define  SOFT_SURFACES    30
 #define  SW_WIDTH         1920
 #define  SW_HEIGHT        1080
 #define  STABLE_FRAME_COUNTER 4
