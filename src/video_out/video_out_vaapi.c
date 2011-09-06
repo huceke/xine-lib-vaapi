@@ -1553,17 +1553,20 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
   pthread_mutex_lock(&driver->vaapi_lock);
   XLockDisplay(driver->display);
 
+  int width = va_context->width;
+  int height = va_context->height;
+
   data->format = XINE_IMGFMT_YV12;
-  data->img_size = this->width * this->height
-                   + ((this->width + 1) / 2) * ((this->height + 1) / 2)
-                   + ((this->width + 1) / 2) * ((this->height + 1) / 2);
+  data->img_size = width * height
+                   + ((width + 1) / 2) * ((height + 1) / 2)
+                   + ((width + 1) / 2) * ((height + 1) / 2);
   if (data->img) {
-    pitches[0] = this->width;
-    pitches[2] = this->width / 2;
-    pitches[1] = this->width / 2;
+    pitches[0] = width;
+    pitches[2] = width / 2;
+    pitches[1] = width / 2;
     base[0] = data->img;
-    base[2] = data->img + this->width * this->height;
-    base[1] = data->img + this->width * this->height + this->width * this->height / 4;
+    base[2] = data->img + width * height;
+    base[1] = data->img + width * height + width * this->height / 4;
 
     VAImage   va_image;
     VAStatus  vaStatus;
@@ -1582,12 +1585,12 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
     if(surf_status != VASurfaceReady)
       goto error;
 
-    vaStatus = vaapi_create_image(va_context->driver, accel->va_surface_id, &va_image, this->width, this->height, 0);
+    vaStatus = vaapi_create_image(va_context->driver, accel->va_surface_id, &va_image, width, height, 0);
     if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()"))
       goto error;
 
     lprintf("vaapi_provide_standard_frame_data accel->va_surface_id 0x%08x va_image.image_id 0x%08x va_image.width %d va_image.height %d width %d height %d size1 %d size2 %d %d %d %d status %d\n", 
-       accel->va_surface_id, va_image.image_id, va_image.width, va_image.height, this->width, this->height, va_image.data_size, data->img_size, 
+       accel->va_surface_id, va_image.image_id, va_image.width, va_image.height, width, height, va_image.data_size, data->img_size, 
        va_image.pitches[0], va_image.pitches[1], va_image.pitches[2], surf_status);
 
     if(va_image.image_id == VA_INVALID_ID) {
@@ -1613,7 +1616,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
         if( va_image.format.fourcc == VA_FOURCC('Y','V','1','2') ) {
           lprintf("VAAPI YV12 image\n");
           va_context->convert_ctx = sws_getCachedContext(va_context->convert_ctx, va_image.width, va_image.height, PIX_FMT_YUV420P, 
-                                                 this->width, this->height, PIX_FMT_YUV420P, 
+                                                 width, height, PIX_FMT_YUV420P, 
                                                  SWS_FAST_BILINEAR, NULL, NULL, NULL);
           if(va_context->convert_ctx) {
             sws_scale(va_context->convert_ctx, (const uint8_t * const*)src, va_image.pitches, 0, va_image.height, 
@@ -1624,26 +1627,24 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
 
           lprintf("va_image.offsets[0] %d va_image.offsets[1] %d va_image.offsets[2] %d size %d size %d size %d width %d height %d width %d height %d\n",
               va_image.offsets[0], va_image.offsets[1], va_image.offsets[2], va_image.data_size, va_image.width * va_image.height,
-              data->img_size, this->width, this->height, va_image.width, va_image.height);
+              data->img_size, width, height, va_image.width, va_image.height);
 
           src[0] = (uint8_t *)p_base + va_image.offsets[0];
           src[1] = (uint8_t *)p_base + va_image.offsets[1];
           src[2] = NULL;
 
           base[0] = data->img;
-          base[1] = data->img + this->width * this->height;
-          base[2] = data->img + this->width * this->height + this->width * this->height / 4;
+          base[1] = data->img + width * height;
+          base[2] = data->img + width * height + width * height / 4;
 
           va_context->convert_ctx = sws_getCachedContext(va_context->convert_ctx, va_image.width, va_image.height, PIX_FMT_NV12, 
-                                                 this->width, this->height, PIX_FMT_YUV420P, 
+                                                 width, height, PIX_FMT_YUV420P, 
                                                  SWS_FAST_BILINEAR | SWS_BITEXACT, NULL, NULL, NULL);
 
           if(va_context->convert_ctx) {
             sws_scale(va_context->convert_ctx, (const uint8_t * const*)src, va_image.pitches, 0, va_image.height, 
                       (uint8_t * const*)base, pitches);
           }
-
-          //nv12_to_yv12((uint8_t*)p_base, data->img, va_image.data_size, this->width, this->height);
         } else {
           printf("vaapi_provide_standard_frame_data unsupported image format\n");
         }
@@ -1698,13 +1699,18 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
 
   vaSyncSurface(va_context->va_display, accel_orig->va_surface_id);
 
-  vaStatus = vaapi_create_image(va_context->driver, accel_orig->va_surface_id, &va_image_orig, orig->width, orig->height, 0);
+  int this_width = va_context->width;
+  int this_height = va_context->height;
+  int orig_width = va_context->width;
+  int orig_height = va_context->height;
+
+  vaStatus = vaapi_create_image(va_context->driver, accel_orig->va_surface_id, &va_image_orig, orig_width, orig_height, 0);
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()")) {
     va_image_orig.image_id = VA_INVALID_ID;
     goto error;
   }
 
-  vaStatus = vaapi_create_image(va_context->driver, accel_this->va_surface_id, &va_image_this, this->width, this->height, 0);
+  vaStatus = vaapi_create_image(va_context->driver, accel_this->va_surface_id, &va_image_this, this_width, this_height, 0);
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()")) {
     va_image_this.image_id = VA_INVALID_ID;
     goto error;
