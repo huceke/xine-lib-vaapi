@@ -87,22 +87,45 @@ struct ff_vaapi_context_s {
   void              *gl_surface;
   unsigned int      soft_head;
   unsigned int      valid_context;
+  unsigned int      va_head;
+  unsigned int      va_soft_head;
   vo_driver_t       *driver;
   unsigned int      last_sub_image_fmt;
   struct SwsContext *convert_ctx;
   struct vaapi_equalizer va_equalizer;
 };
 
-typedef struct {
-  vo_frame_t                *vo_frame;
-  VASurfaceID               va_surface_id;
-  VASurfaceID               va_soft_surface_id;
-  VAImage                   *va_soft_image;
+typedef struct ff_vaapi_surface_s ff_vaapi_surface_t;
+typedef struct vaapi_accel_s vaapi_accel_t;
 
+struct ff_vaapi_surface_s {
+  unsigned int        index;
+  vaapi_accel_t       *accel;
+  VASurfaceID         va_surface_id;
+  VASurfaceID         va_soft_surface_id;
+  VAImage             *va_soft_image;
+  unsigned int        status;
+};
+
+struct vaapi_accel_s {
+  unsigned int        index;
+  vo_frame_t          *vo_frame;
+
+#if AVVIDEO > 1
+  int (*avcodec_decode_video2)(vo_frame_t *frame_gen, AVCodecContext *avctx, AVFrame *picture,
+                               int *got_picture_ptr, AVPacket *avpkt);
+#else
+  int (*avcodec_decode_video)(vo_frame_t *frame_gen, AVCodecContext *avctx, AVFrame *picture,
+                              int *got_picture_ptr, uint8_t *buf, int buf_size);
+#endif
   VAStatus (*vaapi_init)(vo_frame_t *frame_gen, int va_profile, int width, int height, int softrender);
   int (*profile_from_imgfmt)(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, int codec_id, int vaapi_mpeg_sofdec);
   ff_vaapi_context_t *(*get_context)(vo_frame_t *frame_gen);
-} vaapi_accel_t;
+  int (*guarded_render)(vo_frame_t *frame_gen);
+  ff_vaapi_surface_t *(*get_vaapi_surface)(vo_frame_t *frame_gen);
+  void (*render_vaapi_surface)(vo_frame_t *frame_gen, ff_vaapi_surface_t *va_surface);
+  void (*release_vaapi_surface)(vo_frame_t *frame_gen, ff_vaapi_surface_t *va_surface);
+};
 
 #ifdef __cplusplus
 }

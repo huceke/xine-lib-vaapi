@@ -149,6 +149,9 @@ struct ff_video_decoder_s {
 #endif
 
   struct vaapi_context  vaapi_context;
+  vaapi_accel_t         *accel;
+  vo_frame_t            *accel_img;
+  uint8_t               set_stream_info;
 };
 
 static void set_stream_info(ff_video_decoder_t *this) {
@@ -173,7 +176,7 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
       this->aspect_ratio = (double)width / (double)height;
       this->aspect_ratio_prio = 1;
       lprintf("default aspect ratio: %f\n", this->aspect_ratio);
-      set_stream_info(this);
+      this->set_stream_info = 1;
     }
   }
 
@@ -183,30 +186,43 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
 
     lprintf("get_buffer ffmpeg 1:\n");
 
-    img = this->stream->video_out->get_frame (this->stream->video_out,
+    av_frame->opaque  = NULL;
+    av_frame->data[0] = NULL;
+    av_frame->data[1] = NULL;
+    av_frame->data[2] = NULL;
+    av_frame->data[3] = NULL;
+    av_frame->type = FF_BUFFER_TYPE_USER;
+    av_frame->age = 1;
+    av_frame->reordered_opaque = context->reordered_opaque;
+
+    if(!this->accel->guarded_render(this->accel_img)) {
+      img = this->stream->video_out->get_frame (this->stream->video_out,
                                             width,
                                             height,
                                             this->aspect_ratio,
                                             this->output_format,
                                             VO_BOTH_FIELDS|this->frame_flags);
 
-    av_frame->opaque = img;
-    xine_list_push_back(this->dr1_frames, av_frame);
+      av_frame->opaque = img;
+      xine_list_push_back(this->dr1_frames, av_frame);
 
-    vaapi_accel_t *accel = (vaapi_accel_t*)img->accel_data;
+      vaapi_accel_t *accel = (vaapi_accel_t*)img->accel_data;
+      ff_vaapi_surface_t *va_surface = accel->get_vaapi_surface(img);
 
-    av_frame->type = FF_BUFFER_TYPE_USER;
+      if(va_surface) {
+        av_frame->data[0] = (void *)va_surface;//(void *)(uintptr_t)va_surface->va_surface_id;
+        av_frame->data[3] = (void *)(uintptr_t)va_surface->va_surface_id;
+      }
+    } else {
+      ff_vaapi_surface_t *va_surface = this->accel->get_vaapi_surface(this->accel_img);
 
-    av_frame->age = 1;
+      if(va_surface) {
+        av_frame->data[0] = (void *)va_surface;//(void *)(uintptr_t)va_surface->va_surface_id;
+        av_frame->data[3] = (void *)(uintptr_t)va_surface->va_surface_id;
+      }
+    }
 
-    av_frame->reordered_opaque = context->reordered_opaque;
-
-    //printf("get_buffer accel->va_surface 0x%08x\n", accel->va_surface_id);
-
-    av_frame->data[0] = (void *)(uintptr_t)accel->va_surface_id;
-    av_frame->data[1] = NULL;
-    av_frame->data[2] = NULL;
-    av_frame->data[3] = (void *)(uintptr_t)accel->va_surface_id;
+    lprintf("1: 0x%08x\n", av_frame->data[3]);
 
     av_frame->linesize[0] = 0;
     av_frame->linesize[1] = 0;
@@ -223,7 +239,11 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
     this->output_format = XINE_IMGFMT_YV12;
   }
 
-  if( this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) {
+  int guarded_render = 0;
+  if(this->accel)
+    guarded_render = this->accel->guarded_render(this->accel_img);
+
+  if( (this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) || guarded_render) {
     if (!this->is_direct_rendering_disabled) {
       xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
               _("ffmpeg_video_dec: unsupported frame format, DR1 disabled.\n"));
@@ -290,6 +310,18 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
 static void release_buffer(struct AVCodecContext *context, AVFrame *av_frame){
   ff_video_decoder_t *this = (ff_video_decoder_t *)context->opaque;
 
+  if( this->context->pix_fmt == PIX_FMT_VAAPI_VLD ) {
+    if(this->accel->guarded_render(this->accel_img)) {
+      ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)av_frame->data[0];
+      if(va_surface != NULL) {
+        this->accel->release_vaapi_surface(this->accel_img, va_surface);
+        lprintf("release_buffer: va_surface_id 0x%08x 0x%08x\n", (unsigned int)*va_surface->va_surface_id, (unsigned int)av_frame->data[3]);
+      }
+    }
+  }
+
+  lprintf("3: 0x%08x\n", av_frame->data[3]);
+
   if (av_frame->type == FF_BUFFER_TYPE_USER) {
     if ( av_frame->opaque ) {
       vo_frame_t *img = (vo_frame_t *)av_frame->opaque;
@@ -340,31 +372,33 @@ static enum PixelFormat get_format(struct AVCodecContext *context, const enum Pi
     int i, profile;
     ff_video_decoder_t *this = (ff_video_decoder_t *)context->opaque;
 
-    if(!this->class->enable_vaapi)
+    if(!this->class->enable_vaapi || !this->accel_img)
       return PIX_FMT_YUV420P;
 
-    vo_frame_t *accel_img = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
+    //vo_frame_t *accel_img = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
 
-    vaapi_accel_t *accel = (vaapi_accel_t*)accel_img->accel_data;
+    vaapi_accel_t *accel = (vaapi_accel_t*)this->accel_img->accel_data;
 
     for (i = 0; fmt[i] != PIX_FMT_NONE; i++) {
         if (fmt[i] != PIX_FMT_VAAPI_VLD)
             continue;
 
-        profile = accel->profile_from_imgfmt(accel_img, fmt[i], context->codec_id, this->class->vaapi_mpeg_softdec);
+        profile = accel->profile_from_imgfmt(this->accel_img, fmt[i], context->codec_id, this->class->vaapi_mpeg_softdec);
 
         if (profile >= 0) {
           VAStatus status;
 
-          status = accel->vaapi_init(accel_img, profile, context->width, context->height, 0);
+          status = accel->vaapi_init(this->accel_img, profile, context->width, context->height, 0);
 
           if( status == VA_STATUS_SUCCESS ) {
-            ff_vaapi_context_t *va_context = accel->get_context(accel_img);
+            ff_vaapi_context_t *va_context = accel->get_context(this->accel_img);
 
             if(!va_context)
             {
+              /*
               if(accel_img)
                 accel_img->free(accel_img);
+              */
 
               return PIX_FMT_YUV420P;
             }
@@ -380,16 +414,20 @@ static enum PixelFormat get_format(struct AVCodecContext *context, const enum Pi
             context->hwaccel_context     = &this->vaapi_context;
             this->pts = 0;
 
+            /*
             if(accel_img)
               accel_img->free(accel_img);
+            */
 
             return fmt[i];
           }
         }
     }
 
+    /*
     if(accel_img)
       accel_img->free(accel_img);
+    */
 
     return PIX_FMT_YUV420P;
 }
@@ -1285,12 +1323,23 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     avpkt.data = (uint8_t *)this->mpeg_parser->chunk_buffer;
     avpkt.size = this->mpeg_parser->buffer_size;
     avpkt.flags = AV_PKT_FLAG_KEY;
-    len = avcodec_decode_video2 (this->context, av_framedisp,
+    if(this->accel) {
+      len = this->accel->avcodec_decode_video2 ( this->accel_img, this->context, av_framedisp,
 				 &got_picture, &avpkt);
+    } else {
+      len = avcodec_decode_video2 ( this->context, av_framedisp,
+				 &got_picture, &avpkt);
+   }
 #else
-    len = avcodec_decode_video (this->context, av_framedisp,
+    if(this->accel) {
+      len = this->accel->avcodec_decode_video ( this->accel_img, this->context, av_framedisp,
                                 &got_picture, this->mpeg_parser->chunk_buffer,
                                 this->mpeg_parser->buffer_size);
+    } else {
+      len = avcodec_decode_video (this->context, av_framedisp,
+                                &got_picture, this->mpeg_parser->chunk_buffer,
+                                this->mpeg_parser->buffer_size);
+    }
 #endif
     lprintf("avcodec_decode_video: decoded_size=%d, got_picture=%d\n",
             len, got_picture);
@@ -1321,6 +1370,11 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
         this->bih.biWidth = width;
         this->bih.biHeight = height;
       }
+    }
+
+    if( this->set_stream_info) {
+      set_stream_info(this);
+      this->set_stream_info = 0;
     }
 
     if (got_picture && av_framedisp->data[0]) {
@@ -1395,6 +1449,14 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
 
       img->crop_right  = this->crop_right;
       img->crop_bottom = this->crop_bottom;
+
+      if( this->context->pix_fmt == PIX_FMT_VAAPI_VLD) {
+        if(this->accel->guarded_render(this->accel_img)) {
+          ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)av_framedisp->data[0];
+          this->accel->render_vaapi_surface(img, va_surface);
+          lprintf("handle_mpeg12_buffer: render_vaapi_surface va_surface_id 0x%08x\n", *va_surface->va_surface_id);
+        }
+      }
 
       this->skipframes = img->draw(img, this->stream);
 
@@ -1573,12 +1635,23 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
 	avpkt.data = (uint8_t *)&chunk_buf[offset];
 	avpkt.size = this->size;
 	avpkt.flags = AV_PKT_FLAG_KEY;
-	len = avcodec_decode_video2 (this->context, this->av_frame,
+  if(this->accel) {
+  	len = this->accel->avcodec_decode_video2 ( this->accel_img, this->context, this->av_frame,
 				     &got_picture, &avpkt);
+  } else {
+  	len = avcodec_decode_video2 (this->context, this->av_frame,
+				     &got_picture, &avpkt);
+  }
 #else
+  if(this->accel) {
+        len = this->accel->avcodec_decode_video ( this->accel_img, this->context, this->av_frame,
+                                    &got_picture, &chunk_buf[offset],
+                                    this->size);
+  } else {
         len = avcodec_decode_video (this->context, this->av_frame,
                                     &got_picture, &chunk_buf[offset],
                                     this->size);
+  }
 #endif
         /* reset consumed pts value */
         this->context->reordered_opaque = ff_tag_pts(this, 0);
@@ -1628,6 +1701,11 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
 	this->aspect_ratio_prio = 2;
 	lprintf("ffmpeg aspect ratio: %f\n", this->aspect_ratio);
 	set_stream_info(this);
+      }
+
+      if( this->set_stream_info) {
+        set_stream_info(this);
+        this->set_stream_info = 0;
       }
 
       if (got_picture && this->av_frame->data[0]) {
@@ -1727,6 +1805,15 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
         /* transfer some more frame settings for deinterlacing */
         img->progressive_frame = !this->av_frame->interlaced_frame;
         img->top_field_first   = this->av_frame->top_field_first;
+
+        if( this->context->pix_fmt == PIX_FMT_VAAPI_VLD) {
+          if(this->accel->guarded_render(this->accel_img)) {
+            ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)this->av_frame->data[0];
+            this->accel->render_vaapi_surface(img, va_surface);
+            if(va_surface)
+              lprintf("handle_buffer: render_vaapi_surface va_surface_id 0x%08x\n", *va_surface->va_surface_id);
+          }
+        }
 
         this->skipframes = img->draw(img, this->stream);
 
@@ -1936,6 +2023,9 @@ static void ff_dispose (video_decoder_t *this_gen) {
 
   xine_list_delete(this->dr1_frames);
 
+  if(this->accel_img)
+    this->accel_img->free(this->accel_img);
+
   free (this_gen);
 }
 
@@ -1977,6 +2067,7 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
   this->mpeg_parser       = NULL;
 
   this->dr1_frames        = xine_list_new();
+  this->set_stream_info   = 0;
 
 #ifdef LOG
   this->debug_fmt = -1;
@@ -1986,11 +2077,14 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
 
   this->dr1_frames        = xine_list_new();
 
-  if(this->class->enable_vaapi) {
-    vo_frame_t *accel_img  = stream->video_out->get_frame( stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
+  this->accel             = NULL;
+  this->accel_img         = NULL;
 
-    if(accel_img ) {
-      accel_img->free(accel_img);
+  if(this->class->enable_vaapi) {
+    this->accel_img  = stream->video_out->get_frame( stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
+
+    if( this->accel_img ) {
+      this->accel = (vaapi_accel_t*)this->accel_img->accel_data;
       xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled in config.\n"));
     } else {
       this->class->enable_vaapi = 0;
