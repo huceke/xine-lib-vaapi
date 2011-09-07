@@ -197,7 +197,6 @@ struct vaapi_driver_s {
 
   int                  num_frame_buffers;
   vaapi_frame_t       *frames[RENDER_SURFACES];
-  vaapi_frame_t       *cur_frame;
 
   pthread_mutex_t     vaapi_lock;
 
@@ -1009,7 +1008,6 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
   va_context->va_context_id             = VA_INVALID_ID;
   va_context->va_profile                = 0;
   va_context->va_colorspace             = 1;
-  this->cur_frame                       = NULL;
   va_context->is_bound                  = 0;
   va_context->gl_surface                = NULL;
   va_context->soft_head                 = 0;
@@ -2072,51 +2070,32 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
 
-  int ret = 0;
+  _x_vo_scale_compute_ideal_size( &this->sc );
 
-  if(this->cur_frame) {
+  if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
+    _x_vo_scale_compute_output_size( &this->sc );
 
-    /*
-     * tell gui that we are about to display a frame,
-     * ask for offset and output size
-     */
-    this->sc.delivered_height = this->cur_frame->height;
-    this->sc.delivered_width  = this->cur_frame->width;
-    this->sc.delivered_ratio  = this->cur_frame->ratio;
-    this->sc.crop_left        = this->cur_frame->vo_frame.crop_left;
-    this->sc.crop_right       = this->cur_frame->vo_frame.crop_right;
-    this->sc.crop_top         = this->cur_frame->vo_frame.crop_top;
-    this->sc.crop_bottom      = this->cur_frame->vo_frame.crop_bottom;
+    int width = this->sc.gui_width;
+    int height = this->sc.gui_height;
 
-    _x_vo_scale_compute_ideal_size( &this->sc );
-
-    if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
-      _x_vo_scale_compute_output_size( &this->sc );
-
-      int width = this->sc.gui_width;
-      int height = this->sc.gui_height;
-
-      if(this->opengl_render && this->valid_opengl_context) {
-        glViewport(0, 0, width, height);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
-        glScalef(1.0f / (GLfloat)width, 
-                 -1.0f / (GLfloat)height,
-                 1.0f / (GLfloat)width);
-        glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
-      }
-  
+    if(this->opengl_render && this->valid_opengl_context) {
+      glViewport(0, 0, width, height);
+      glMatrixMode(GL_PROJECTION);
+      glLoadIdentity();
+      gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
+      glMatrixMode(GL_MODELVIEW);
+      glLoadIdentity();
+      glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
+      glScalef(1.0f / (GLfloat)width, 
+               -1.0f / (GLfloat)height,
+               1.0f / (GLfloat)width);
+      glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
     }
-    ret = 1;
-  } else {
-    ret = 1;
+  
+    return 1;
   }
 
-  return ret;
+  return 0;
 }
 
 static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_frame_data_t *data)
@@ -2426,13 +2405,13 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     frame->height = height;
     frame->format = format;
     frame->flags  = flags;
-    frame->ratio  = ratio;
     vaapi_frame_field ((vo_frame_t *)frame, flags);
   }
 
   XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
 
+  frame->ratio  = ratio;
   frame->vo_frame.future_frame = NULL;
 }
 
@@ -2622,8 +2601,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     return;
   }
 
-  this->cur_frame = frame;
-
   /*
    * let's see if this frame is different in size / aspect
    * ratio from the previous one
@@ -2639,6 +2616,18 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     lprintf("frame format changed\n");
     this->sc.force_redraw = 1;
   }
+
+  /*
+   * tell gui that we are about to display a frame,
+   * ask for offset and output size
+   */
+  this->sc.delivered_height = frame->height;
+  this->sc.delivered_width  = frame->width;
+  this->sc.delivered_ratio  = frame->ratio;
+  this->sc.crop_left        = frame->vo_frame.crop_left;
+  this->sc.crop_right       = frame->vo_frame.crop_right;
+  this->sc.crop_top         = frame->vo_frame.crop_top;
+  this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
 
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
@@ -3095,7 +3084,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->vdr_osd_width                  = 0;
   this->vdr_osd_height                 = 0;
   this->reinit_rendering               = 0;
-  this->cur_frame                      = NULL;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
         _("vaapi: VDR osd width workaround."),
