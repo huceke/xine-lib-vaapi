@@ -3270,6 +3270,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 
   case XINE_GUI_SEND_EXPOSE_EVENT: {
     lprintf("XINE_GUI_SEND_EXPOSE_EVENT:\n");
+    this->sc.force_redraw = 1;
   }
   break;
 
