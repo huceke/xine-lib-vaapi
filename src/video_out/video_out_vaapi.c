@@ -3178,6 +3178,8 @@ static int vaapi_get_property (vo_driver_t *this_gen, int property) {
     case VO_PROP_MAX_NUM_FRAMES:
       if(!this->guarded_render)
         this->props[property].value = RENDER_SURFACES;
+      else
+        this->props[property].value = 2;
       break;
   } 
 
