@@ -3102,7 +3102,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   if(va_context->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) )) {
 
-    if((frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12)) {
+    if((frame->format == XINE_IMGFMT_YUY2) || (frame->format == XINE_IMGFMT_YV12)) {
       va_surface_id = va_soft_surface_ids[va_context->va_soft_head];
       va_image = &va_soft_images[va_context->va_soft_head];
       va_context->va_soft_head = (va_context->va_soft_head + 1) % (SOFT_SURFACES);
