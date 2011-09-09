@@ -315,7 +315,7 @@ static void release_buffer(struct AVCodecContext *context, AVFrame *av_frame){
       ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)av_frame->data[0];
       if(va_surface != NULL) {
         this->accel->release_vaapi_surface(this->accel_img, va_surface);
-        lprintf("release_buffer: va_surface_id 0x%08x 0x%08x\n", (unsigned int)*va_surface->va_surface_id, (unsigned int)av_frame->data[3]);
+        lprintf("release_buffer: va_surface_id 0x%08x\n", (unsigned int)av_frame->data[3]);
       }
     }
   }
@@ -1454,7 +1454,7 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
         if(this->accel->guarded_render(this->accel_img)) {
           ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)av_framedisp->data[0];
           this->accel->render_vaapi_surface(img, va_surface);
-          lprintf("handle_mpeg12_buffer: render_vaapi_surface va_surface_id 0x%08x\n", *va_surface->va_surface_id);
+          lprintf("handle_mpeg12_buffer: render_vaapi_surface va_surface_id 0x%08x\n", av_framedisp->data[0]);
         }
       }
 
@@ -1811,7 +1811,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
             ff_vaapi_surface_t *va_surface = (ff_vaapi_surface_t *)this->av_frame->data[0];
             this->accel->render_vaapi_surface(img, va_surface);
             if(va_surface)
-              lprintf("handle_buffer: render_vaapi_surface va_surface_id 0x%08x\n", *va_surface->va_surface_id);
+              lprintf("handle_buffer: render_vaapi_surface va_surface_id 0x%08x\n", this->av_frame->data[0]);
           }
         }
 
@@ -2080,10 +2080,11 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
   this->accel             = NULL;
   this->accel_img         = NULL;
 
+
   if(this->class->enable_vaapi) {
     this->accel_img  = stream->video_out->get_frame( stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
 
-    if( this->accel_img ) {
+    if( this->accel_img && (stream->video_driver->get_capabilities(stream->video_driver) & VO_CAP_VAAPI) ) {
       this->accel = (vaapi_accel_t*)this->accel_img->accel_data;
       xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled in config.\n"));
     } else {
