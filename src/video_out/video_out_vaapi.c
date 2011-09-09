@@ -225,6 +225,7 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen);
 static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image);
 static int vaapi_ovl_associate(vo_frame_t *frame_gen, int bShow);
 static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen);
+static VAStatus vaapi_destroy_render_surfaces(vo_driver_t *this_gen);
 static const char *vaapi_profile_to_string(VAProfile profile);
 static int vaapi_set_property (vo_driver_t *this_gen, int property, int value);
 static void vaapi_show_display_props(vo_driver_t *this_gen);
@@ -1227,34 +1228,13 @@ static void vaapi_close(vo_driver_t *this_gen) {
 
   int i;
 
-  vaapi_destroy_subpicture(this_gen);
+  destroy_glx((vo_driver_t *)this);
 
-  if(va_context->va_context_id != VA_INVALID_ID) {
-    vaStatus = vaDestroyContext(va_context->va_display, va_context->va_context_id);
-    vaapi_check_status(this_gen, vaStatus, "vaDestroyContext()");
-    va_context->va_context_id = VA_INVALID_ID;
-  }
-  
+  vaapi_destroy_subpicture(this_gen);
 
   vaapi_destroy_soft_surfaces(this_gen);
 
-  for(i = 0; i < RENDER_SURFACES; i++) {
-    if(va_surface_ids[i] != VA_INVALID_SURFACE) {
-      vaStatus = vaSyncSurface(va_context->va_display, va_surface_ids[i]);
-      vaapi_check_status(this_gen, vaStatus, "vaSyncSurface()");
-      vaStatus = vaDestroySurfaces(va_context->va_display, &va_surface_ids[i], 1);
-      vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaces()");
-      va_surface_ids[i] = VA_INVALID_SURFACE;
-
-      ff_vaapi_surface_t *va_surface  = &va_render_surfaces[i];
-      va_surface->index               = i;
-      va_surface->status              = SURFACE_FREE;
-      va_surface->va_surface_id       = va_surface_ids[i];
-
-    }
-  }
-
-  destroy_glx((vo_driver_t *)this);
+  vaapi_destroy_render_surfaces(this_gen);
 
   if(va_context->va_config_id != VA_INVALID_ID) {
     vaStatus = vaDestroyConfig(va_context->va_display, va_context->va_config_id);
@@ -1262,6 +1242,12 @@ static void vaapi_close(vo_driver_t *this_gen) {
     va_context->va_config_id = VA_INVALID_ID;
   }
 
+  if(va_context->va_context_id != VA_INVALID_ID) {
+    vaStatus = vaDestroyContext(va_context->va_display, va_context->va_context_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroyContext()");
+    va_context->va_context_id = VA_INVALID_ID;
+  }
+  
   vaStatus = vaTerminate(va_context->va_display);
   vaapi_check_status(this_gen, vaStatus, "vaTerminate()");
   va_context->va_display = NULL;
@@ -1662,6 +1648,30 @@ static void vaapi_set_background_color(vo_driver_t *this_gen) {
 
   vaStatus = vaSetDisplayAttributes(va_context->va_display, &attr, 1);
   vaapi_check_status(this_gen, vaStatus, "vaSetDisplayAttributes()");
+}
+
+static VAStatus vaapi_destroy_render_surfaces(vo_driver_t *this_gen) {
+  vaapi_driver_t      *this = (vaapi_driver_t *)this_gen;
+  ff_vaapi_context_t  *va_context = this->va_context;
+  int                 i;
+  VAStatus            vaStatus;
+
+  for(i = 0; i < RENDER_SURFACES; i++) {
+    if(va_surface_ids[i] != VA_INVALID_SURFACE) {
+      vaStatus = vaSyncSurface(va_context->va_display, va_surface_ids[i]);
+      vaapi_check_status(this_gen, vaStatus, "vaSyncSurface()");
+      vaStatus = vaDestroySurfaces(va_context->va_display, &va_surface_ids[i], 1);
+      vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaces()");
+      va_surface_ids[i] = VA_INVALID_SURFACE;
+
+      ff_vaapi_surface_t *va_surface  = &va_render_surfaces[i];
+      va_surface->index               = i;
+      va_surface->status              = SURFACE_FREE;
+      va_surface->va_surface_id       = va_surface_ids[i];
+    }
+  }
+
+  return VA_STATUS_SUCCESS;
 }
 
 static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen) {
