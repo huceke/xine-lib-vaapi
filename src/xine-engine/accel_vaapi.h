@@ -102,8 +102,6 @@ struct ff_vaapi_surface_s {
   unsigned int        index;
   vaapi_accel_t       *accel;
   VASurfaceID         va_surface_id;
-  VASurfaceID         va_soft_surface_id;
-  VAImage             *va_soft_image;
   unsigned int        status;
 };
 

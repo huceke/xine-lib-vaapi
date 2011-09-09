@@ -73,7 +73,8 @@
 
 #include <libswscale/swscale.h>
 
-#define  RENDER_SURFACES  30
+#define  RENDER_SURFACES  50
+#define  SOFT_SURFACES    3
 #define  SW_WIDTH         1920
 #define  SW_HEIGHT        1080
 #define  STABLE_FRAME_COUNTER 4
@@ -212,6 +213,7 @@ struct vaapi_driver_s {
   unsigned int        reinit_rendering;
   unsigned int        guarded_render;
   va_property_t       props[VO_NUM_PROPERTIES];
+  vaapi_frame_t       *cur_frame;
 };
 
 ff_vaapi_surface_t  *va_render_surfaces   = NULL;
@@ -1037,8 +1039,6 @@ static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, 
   VAProfile           *va_profiles = NULL;
   int                 inited = 0;
 
-  //memset(&va_context, 0x0, sizeof(ff_vaapi_context_t));
-
   if(va_context->va_display == NULL) {
     printf("profile_from_imgfmt vaInitialize\n");
     inited = 1;
@@ -1202,10 +1202,11 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
     va_surface->index                   = i;
     va_surface->status                  = SURFACE_FREE;
     va_surface->va_surface_id           = VA_INVALID_SURFACE;
-    va_surface->va_soft_image           = &va_soft_images[i];
-    va_surface->va_soft_surface_id      = VA_INVALID_SURFACE;
 
     va_surface_ids[i]                   = VA_INVALID_SURFACE;
+  }
+
+  for(i = 0; i < SOFT_SURFACES; i++) {
     va_soft_surface_ids[i]              = VA_INVALID_SURFACE;
     va_soft_images[i].image_id          = VA_INVALID_ID;
   }
@@ -1215,6 +1216,7 @@ static void vaapi_init_va_context(vaapi_driver_t *this_gen) {
 static void vaapi_close(vo_driver_t *this_gen) {
   vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
+  VAStatus              vaStatus;
 
   if(va_context == NULL || va_context->va_display == NULL)
     return;
@@ -1223,33 +1225,44 @@ static void vaapi_close(vo_driver_t *this_gen) {
 
   vaapi_destroy_subpicture(this_gen);
 
-  if(va_context->va_context_id != VA_INVALID_ID)
-    vaDestroyContext(va_context->va_display, va_context->va_context_id);
+  if(va_context->va_context_id != VA_INVALID_ID) {
+    vaStatus = vaDestroyContext(va_context->va_display, va_context->va_context_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroyContext()");
+  }
+  
 
   vaapi_destroy_soft_surfaces(this_gen);
 
-  for(i = 0; i < RENDER_SURFACES; i++) {
+  for(i = 0; i < SOFT_SURFACES; i++) {
     if(va_soft_images[i].image_id != VA_INVALID_ID)
       vaapi_destroy_image((vo_driver_t *)this, &va_soft_images[i]);
 
     if(va_soft_surface_ids[i] != VA_INVALID_SURFACE) {
-      vaSyncSurface(va_context->va_display, va_soft_surface_ids[i]);
-      vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+      vaStatus = vaSyncSurface(va_context->va_display, va_soft_surface_ids[i]);
+      vaapi_check_status(this_gen, vaStatus, "vaSyncSurface()");
+      vaStatus = vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+      vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaces()");
     }
+  }
 
+  for(i = 0; i < RENDER_SURFACES; i++) {
     if(va_surface_ids[i] != VA_INVALID_SURFACE) {
-      vaSyncSurface(va_context->va_display, va_surface_ids[i]);
-      vaDestroySurfaces(va_context->va_display, &va_surface_ids[i], 1);
+      vaStatus = vaSyncSurface(va_context->va_display, va_surface_ids[i]);
+      vaapi_check_status(this_gen, vaStatus, "vaSyncSurface()");
+      vaStatus = vaDestroySurfaces(va_context->va_display, &va_surface_ids[i], 1);
+      vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaces()");
     }
-    
   }
 
   destroy_glx((vo_driver_t *)this);
 
-  if(va_context->va_config_id != VA_INVALID_ID)
-    vaDestroyConfig(va_context->va_display, va_context->va_config_id);
+  if(va_context->va_config_id != VA_INVALID_ID) {
+    vaStatus = vaDestroyConfig(va_context->va_display, va_context->va_config_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroyConfig()");
+  }
 
   vaTerminate(va_context->va_display);
+  vaapi_check_status(this_gen, vaStatus, "vaTerminate()");
   va_context->va_display = NULL;
 
   if(va_context->convert_ctx)
@@ -1270,10 +1283,12 @@ static ff_vaapi_context_t *get_context(vo_frame_t *frame_gen) {
 static void vaapi_destroy_image(vo_driver_t *this_gen, VAImage *va_image) {
   vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
+  VAStatus              vaStatus;
 
-  if(va_image->image_id != VA_INVALID_ID) {
+  if(va_image->image_id != VA_INVALID_ID && va_image->buf != VA_INVALID_ID) {
     lprintf("vaapi_destroy_image 0x%08x\n", va_image->image_id);
-    vaDestroyImage(va_context->va_display, va_image->image_id);
+    vaStatus = vaDestroyImage(va_context->va_display, va_image->image_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroyImage()");
   }
   va_image->image_id = VA_INVALID_ID;
   va_image->width = 0;
@@ -1340,7 +1355,8 @@ static VAStatus vaapi_create_image(vo_driver_t *this_gen, VASurfaceID va_surface
     }
   }
 
-  vaUnmapBuffer( va_context->va_display, va_image->buf );
+  vaStatus = vaUnmapBuffer( va_context->va_display, va_image->buf );
+  vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()");
 
   lprintf("vaapi_create_image 0x%08x width %d height %d\n", va_image->image_id, va_image->width, va_image->height);
 
@@ -1358,20 +1374,25 @@ error:
 static void vaapi_destroy_subpicture(vo_driver_t *this_gen) {
   vaapi_driver_t        *this = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
+  VAStatus              vaStatus;
 
   if(va_context->last_sub_image_fmt == XINE_IMGFMT_VAAPI) {
-    vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+    vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
                             va_surface_ids, RENDER_SURFACES);
+    vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
   } else if(va_context->last_sub_image_fmt == XINE_IMGFMT_YV12 ||
             va_context->last_sub_image_fmt == XINE_IMGFMT_YUY2) {
-    vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                            va_soft_surface_ids, RENDER_SURFACES);
+    vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+                            va_soft_surface_ids, SOFT_SURFACES);
+    vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
   }
 
-  if(va_context->va_subpic_id != VA_INVALID_ID)
-    vaDestroySubpicture(va_context->va_display, va_context->va_subpic_id);
-
   vaapi_destroy_image(this_gen, &va_context->va_subpic_image);
+
+  if(va_context->va_subpic_id != VA_INVALID_ID) {
+    vaStatus = vaDestroySubpicture(va_context->va_display, va_context->va_subpic_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
+  }
 
   va_context->va_subpic_id = VA_INVALID_ID;
   va_context->last_sub_image_fmt = 0;
@@ -1387,7 +1408,7 @@ static VAStatus vaapi_create_subpicture(vo_driver_t *this_gen, int width, int he
   int fmt_count = 0;
   VAImageFormat *va_p_fmt = NULL;
 
-  if(!va_context->va_display)
+  if(!va_context->va_display || !va_context->valid_context)
     return VA_STATUS_ERROR_UNKNOWN;
 
   fmt_count = vaMaxNumSubpictureFormats( va_context->va_display );
@@ -1409,6 +1430,11 @@ static VAStatus vaapi_create_subpicture(vo_driver_t *this_gen, int width, int he
     }
   }
 
+  if(va_context->va_subpic_id == VA_INVALID_ID || 
+     va_context->va_subpic_image.image_id == VA_INVALID_ID ||
+     va_context->va_subpic_image.buf == VA_INVALID_ID)
+    goto error;
+
   void *p_base = NULL;
 
   vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
@@ -1416,7 +1442,8 @@ static VAStatus vaapi_create_subpicture(vo_driver_t *this_gen, int width, int he
     goto error;
 
   memset((uint32_t *)p_base, 0x0, va_context->va_subpic_image.data_size);
-  vaUnmapBuffer(va_context->va_display, va_context->va_subpic_image.buf);
+  vaStatus = vaUnmapBuffer(va_context->va_display, va_context->va_subpic_image.buf);
+  vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()");
 
   this->overlay_output_width  = width;
   this->overlay_output_height = height;
@@ -1545,6 +1572,7 @@ static void vaapi_check_capability (vaapi_driver_t *this,
 }
 
 static void vaapi_show_display_props(vo_driver_t *this_gen) {
+  /*
   vaapi_driver_t      *this = (vaapi_driver_t *) this_gen;
 
   if(this->capabilities & VO_CAP_BRIGHTNESS)
@@ -1555,7 +1583,7 @@ static void vaapi_show_display_props(vo_driver_t *this_gen) {
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : hue            : %d\n", this->props[VO_PROP_HUE].value);
   if(this->capabilities & VO_CAP_SATURATION)
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : saturation     : %d\n", this->props[VO_PROP_SATURATION].value); 
-
+  */
 }
 
 /* VAAPI display attributes. */
@@ -1638,11 +1666,10 @@ static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen) {
   vaapi_driver_t      *this = (vaapi_driver_t *)this_gen;
   ff_vaapi_context_t  *va_context = this->va_context;
   int                 i;
+  VAStatus            vaStatus;
 
 
-  for(i = 0; i < RENDER_SURFACES; i++) {
-    ff_vaapi_surface_t *va_surface  = &va_render_surfaces[i];
-
+  for(i = 0; i < SOFT_SURFACES; i++) {
     vaapi_destroy_image((vo_driver_t *)this, &va_soft_images[i]);
     va_soft_images[i].image_id = VA_INVALID_ID;
 
@@ -1650,10 +1677,10 @@ static VAStatus vaapi_destroy_soft_surfaces(vo_driver_t *this_gen) {
 #ifdef DEBUG_SURFACE
       printf("vaapi_close destroy render surface 0x%08x\n", va_soft_surface_ids[i]);
 #endif
-      vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+      vaStatus = vaDestroySurfaces(va_context->va_display, &va_soft_surface_ids[i], 1);
+      vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaces()");
       va_soft_surface_ids[i]          = VA_INVALID_SURFACE;
     }
-    va_surface->va_soft_surface_id  = VA_INVALID_SURFACE;
   }
 
   va_context->sw_width  = 0;
@@ -1667,17 +1694,17 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
   VAStatus            vaStatus;
   int                 i;
 
+  //XSync(this->display, True);
+
   vaapi_destroy_soft_surfaces(this_gen);
 
-  vaStatus = vaCreateSurfaces(va_context->va_display, width, height, VA_RT_FORMAT_YUV420, RENDER_SURFACES, va_soft_surface_ids);
+  vaStatus = vaCreateSurfaces(va_context->va_display, width, height, VA_RT_FORMAT_YUV420, SOFT_SURFACES, va_soft_surface_ids);
   if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaces()"))
     goto error;
 
   /* allocate software surfaces */
-  for(i = 0; i < RENDER_SURFACES; i++) {
+  for(i = 0; i < SOFT_SURFACES; i++) {
     ff_vaapi_surface_t *va_surface  = &va_render_surfaces[i];
-
-    va_surface->va_soft_surface_id  = va_soft_surface_ids[i];
 
     vaStatus = vaapi_create_image((vo_driver_t *)this, va_soft_surface_ids[i], &va_soft_images[i], width, height, 1);
     if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_image()")) {
@@ -1694,6 +1721,7 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
       vaStatus = vaPutImage(va_context->va_display, va_soft_surface_ids[i], va_soft_images[i].image_id,
                0, 0, va_soft_images[i].width, va_soft_images[i].height,
                0, 0, va_soft_images[i].width, va_soft_images[i].height);
+      vaapi_check_status(this_gen, vaStatus, "vaPutImage()");
     }
 #ifdef DEBUG_SURFACE
     printf("vaapi_init_soft_surfaces 0x%08x\n", va_soft_surface_ids[i]);
@@ -1722,6 +1750,8 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   int                 maj, min, i;
   VAStatus            vaStatus;
 
+  //XSync(this->display, True);
+
   vaapi_close(this_gen);
   vaapi_init_va_context(this);
 
@@ -1743,7 +1773,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   char *p = (char *)vendor;
   for(i = 0; i < strlen(vendor); i++, p++) {
     if(strncmp(p, "VDPAU", strlen("VDPAU")) == 0) {
-      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Enable Splitted-Desktop Systems VDPAU workarounds. Please contact Splitted-Desktop to fix this missbehavior. VAAPI will not work stable without a working vaQuerySurfaceStatus extension.\n");
+      xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Enable Splitted-Desktop Systems VDPAU-VIDEO workarounds.\n");
       this->query_va_status = 0;
       this->opengl_use_tfp = 0;
       break;
@@ -1852,20 +1882,29 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
 
   vo_driver_t         *this_gen   = (vo_driver_t *) frame_gen->driver;
   vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  ff_vaapi_context_t  *va_context = this->va_context;
 
   VAStatus vaStatus;
 
+  unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
+
+  if(last_sub_img_fmt && this->cur_frame)
+    vaapi_ovl_associate(frame_gen, 0);
+
   if(!this->guarded_render) {
     pthread_mutex_lock(&this->vaapi_lock);
-    //XLockDisplay(this->display);
+    XLockDisplay(this->display);
   }
 
   vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softrender);
 
   if(!this->guarded_render) {
-    //XUnlockDisplay(this->display);
+    XUnlockDisplay(this->display);
     pthread_mutex_unlock(&this->vaapi_lock);
   }
+
+  if(last_sub_img_fmt && this->cur_frame)
+    vaapi_ovl_associate(frame_gen, 1);
 
   return vaStatus;
 }
@@ -2005,7 +2044,7 @@ static int vaapi_ovl_associate(vo_frame_t *frame_gen, int bShow) {
                               0, 0, output_width, output_height, flags);
     } else {
       vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                              va_soft_surface_ids, RENDER_SURFACES,
+                              va_soft_surface_ids, SOFT_SURFACES,
                               0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
                               0, 0, va_soft_images[0].width, va_soft_images[0].height, flags);
     }
@@ -2367,6 +2406,24 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   }
 }
 
+static void vaapi_resize_glx_window (vo_driver_t *this_gen, int width, int height) {
+  vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
+
+  if(this->opengl_render && this->valid_opengl_context) {
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
+    glScalef(1.0f / (GLfloat)width, 
+             -1.0f / (GLfloat)height,
+             1.0f / (GLfloat)width);
+    glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
+  }
+}
+
 static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
 
@@ -2375,23 +2432,8 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
     _x_vo_scale_compute_output_size( &this->sc );
 
-    int width = this->sc.gui_width;
-    int height = this->sc.gui_height;
+    vaapi_resize_glx_window(this_gen, this->sc.gui_width, this->sc.gui_height);
 
-    if(this->opengl_render && this->valid_opengl_context) {
-      glViewport(0, 0, width, height);
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
-      gluPerspective(FOVY, ASPECT, Z_NEAR, Z_FAR);
-      glMatrixMode(GL_MODELVIEW);
-      glLoadIdentity();
-      glTranslatef(-0.5f, -0.5f, -Z_CAMERA);
-      glScalef(1.0f / (GLfloat)width, 
-               -1.0f / (GLfloat)height,
-               1.0f / (GLfloat)width);
-      glTranslatef(0.0f, -1.0f * (GLfloat)height, 0.0f);
-    }
-  
     return 1;
   }
 
@@ -2469,7 +2511,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
        va_surface->va_surface_id, va_image.image_id, va_context->width, va_context->height, va_image.width, va_image.height, width, height, va_image.data_size, data->img_size, 
        va_image.pitches[0], va_image.pitches[1], va_image.pitches[2], surf_status, va_image.num_planes);
 
-    if(va_image.image_id == VA_INVALID_ID) {
+    if(va_image.image_id == VA_INVALID_ID || va_image.buf == VA_INVALID_ID) {
       goto error;
     }
 
@@ -2595,7 +2637,8 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
     goto error;
   }
 
-  if(va_image_orig.image_id == VA_INVALID_ID || va_image_this.image_id == VA_INVALID_ID) {
+  if(va_image_orig.image_id == VA_INVALID_ID || va_image_this.image_id == VA_INVALID_ID ||
+     va_image_orig.buf == VA_INVALID_ID || va_image_this.buf == VA_INVALID_ID) {
     printf("vaapi_duplicate_frame_data invalid image\n");
     goto error;
   }
@@ -2970,6 +3013,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   this->sc.crop_top         = frame->vo_frame.crop_top;
   this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
 
+  this->cur_frame = frame;
+
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
@@ -3008,6 +3053,10 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   vaapi_redraw_needed (this_gen);
 
+  /* posible race could happen while the lock is opened */
+  if(!this->va_context || !this->va_context->valid_context)
+    return;
+
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
   /* The opengl rendering is not inititalized till here.
@@ -3015,8 +3064,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
    * Opengl init must be done before redraw 
    */
   if(this->opengl_render && !this->valid_opengl_context && va_context->valid_context) {
-    if(vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height))
-      this->sc.force_redraw = 1;
+    this->reinit_rendering = 1;
+    //if(vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height))
+    //  this->sc.force_redraw = 1;
   }
 
   /* reinit of the rendering was triggered */
@@ -3027,6 +3077,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       vaapi_ovl_associate(frame_gen, 0);
 
     destroy_glx(this_gen);
+
+    vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
 
     if(this->opengl_render && va_context->valid_context)
       vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
@@ -3050,6 +3102,12 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   if(va_context->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) )) {
 
+    if((frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12)) {
+      va_surface_id = va_soft_surface_ids[va_context->va_soft_head];
+      va_image = &va_soft_images[va_context->va_soft_head];
+      va_context->va_soft_head = (va_context->va_soft_head + 1) % (SOFT_SURFACES);
+    }
+
     if(this->guarded_render) {
       if(frame->format == XINE_IMGFMT_VAAPI) {
         ff_vaapi_surface_t *va_surface = &va_render_surfaces[accel->index];
@@ -3057,10 +3115,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
           va_surface_id = va_surface->va_surface_id;
         }
         va_image      = NULL;
-      } else {
-        va_surface_id = va_soft_surface_ids[va_context->va_soft_head];
-        va_image = &va_soft_images[va_context->va_soft_head];
-        va_context->va_soft_head = (va_context->va_soft_head + 1) % (RENDER_SURFACES);
       }
 #ifdef DEBUG_SURFACE
       printf("vaapi_display_frame va_surface 0x%08x status %d index %d\n", va_surface_id, va_surface->status, accel->index);
@@ -3069,9 +3123,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       if(frame->format == XINE_IMGFMT_VAAPI) {
         va_surface_id = va_surface->va_surface_id;
         va_image      = NULL;
-      } else {
-        va_surface_id = va_surface->va_soft_surface_id;
-        va_image = va_surface->va_soft_image;
       }
     }
 
@@ -3316,17 +3367,14 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
 
   lprintf("vaapi_dispose\n");
 
-  this->ovl_yuv2rgb->dispose(this->ovl_yuv2rgb);
-  this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
-
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
+  this->ovl_yuv2rgb->dispose(this->ovl_yuv2rgb);
+  this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
+
   vaapi_close(this_gen);
   free(va_context);
-
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
 
   if(this->overlay_bitmap)
     free(this->overlay_bitmap);
@@ -3341,6 +3389,9 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
     free(va_soft_images);
 
   pthread_mutex_destroy(&this->vaapi_lock);
+  XUnlockDisplay(this->display);
+
+  pthread_mutex_unlock(&this->vaapi_lock);
 
   free (this);
 }
@@ -3438,6 +3489,9 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
         _("vaapi: opengl output rendering"),
         _("vaapi: opengl output rendering"),
         20, vaapi_opengl_render, this );
+  
+  // TODO: fix glx rendering path
+  this->opengl_render = 0;
 
   this->opengl_use_tfp = config->register_bool( config, "video.output.vaapi_opengl_use_tfp", 0,
         _("vaapi: opengl rendering tfp"),
@@ -3459,8 +3513,8 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   va_render_surfaces                    = calloc(RENDER_SURFACES + 1, sizeof(ff_vaapi_surface_t));
   va_surface_ids                        = calloc(RENDER_SURFACES + 1, sizeof(VASurfaceID));
-  va_soft_surface_ids                   = calloc(RENDER_SURFACES + 1, sizeof(VASurfaceID));
-  va_soft_images                        = calloc(RENDER_SURFACES + 1, sizeof(VAImage));
+  va_soft_surface_ids                   = calloc(SOFT_SURFACES + 1, sizeof(VASurfaceID));
+  va_soft_images                        = calloc(SOFT_SURFACES + 1, sizeof(VAImage));
 
   vaapi_init_va_context(this);
   vaapi_init_subpicture(this);
@@ -3522,7 +3576,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   XInitThreads();
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
 
   int i;
   for (i = 0; i < VO_NUM_PROPERTIES; i++) {
@@ -3539,6 +3592,8 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->props[VO_PROP_ZOOM_X].value          = 100;
   this->props[VO_PROP_ZOOM_Y].value          = 100;
 
+  this->cur_frame                            = NULL;
+
   if(vaapi_init_internal((vo_driver_t *)this, 0, SW_WIDTH, SW_HEIGHT, 1) != VA_STATUS_SUCCESS) {
     vaapi_dispose((vo_driver_t *)this);
     return NULL;
@@ -3549,7 +3604,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->va_context->driver        = (vo_driver_t *)this;
   this->va_context->convert_ctx   = NULL;
 
-  XUnlockDisplay(this->display);
   pthread_mutex_unlock(&this->vaapi_lock);
 
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_open: Deinterlace : %d\n", this->deinterlace);
