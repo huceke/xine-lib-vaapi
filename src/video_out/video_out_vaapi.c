@@ -3691,7 +3691,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
 
   XMapWindow(this->display, this->window);
   vaapi_x11_wait_event(this->display, this->window, MapNotify);
-  vaapi_x11_wait_event(this->display, this->window, Expose); /* XXX: workaround an XvBA init bug */
 
   if(vi != &visualInfo)
     XFree(vi);
