@@ -91,6 +91,7 @@ struct ff_vaapi_context_s {
   unsigned int      va_soft_head;
   vo_driver_t       *driver;
   unsigned int      last_sub_image_fmt;
+  VASurfaceID       last_sub_surface_id;
   struct SwsContext *convert_ctx;
   struct vaapi_equalizer va_equalizer;
 };

@@ -1445,6 +1445,14 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen) {
   ff_vaapi_context_t    *va_context = this->va_context;
   VAStatus              vaStatus;
 
+  if(va_context->va_subpic_id == VA_INVALID_ID || 
+     va_context->va_subpic_image.image_id == VA_INVALID_ID ||
+     va_context->va_subpic_image.buf == VA_INVALID_ID)
+    return;
+
+  printf("destroy sub 0x%08x 0x%08x 0x%08x\n", va_context->va_subpic_id, 
+      va_context->va_subpic_image.image_id, va_context->va_subpic_image.buf);
+
   if(va_context->last_sub_image_fmt == XINE_IMGFMT_VAAPI) {
     vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
                             va_surface_ids, RENDER_SURFACES);
@@ -1505,6 +1513,9 @@ static VAStatus vaapi_create_subpicture(vo_driver_t *this_gen, int width, int he
     goto error;
 
   void *p_base = NULL;
+
+  printf("create sub 0x%08x 0x%08x 0x%08x\n", va_context->va_subpic_id, 
+      va_context->va_subpic_image.image_id, va_context->va_subpic_image.buf);
 
   vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
   if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()"))
@@ -3589,7 +3600,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   XSetWindowAttributes    xswa;
   unsigned long           xswa_mask;
   XWindowAttributes       wattr;
-  unsigned long           black_pixel, white_pixel;
+  unsigned long           black_pixel;
   XVisualInfo             visualInfo;
   XVisualInfo             *vi;
   int                     depth;
@@ -3664,7 +3675,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->sc.user_ratio           = XINE_VO_ASPECT_AUTO;
 
   black_pixel         = BlackPixel(this->display, this->screen);
-  white_pixel         = WhitePixel(this->display, this->screen);
 
   XGetWindowAttributes(this->display, this->drawable, &wattr);
 
@@ -3760,6 +3770,8 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->props[VO_PROP_ZOOM_Y].value          = 100;
 
   this->cur_frame                            = NULL;
+  this->va_context->last_sub_surface_id      = VA_INVALID_SURFACE;
+  this->va_context->last_sub_image_fmt       = 0;
 
   if(vaapi_init_internal((vo_driver_t *)this, 0, SW_WIDTH, SW_HEIGHT, 1) != VA_STATUS_SUCCESS) {
     vaapi_dispose((vo_driver_t *)this);
