@@ -184,8 +184,6 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
 
   if( this->context->pix_fmt == PIX_FMT_VAAPI_VLD) {
 
-    lprintf("get_buffer ffmpeg 1:\n");
-
     av_frame->opaque  = NULL;
     av_frame->data[0] = NULL;
     av_frame->data[1] = NULL;
@@ -375,8 +373,6 @@ static enum PixelFormat get_format(struct AVCodecContext *context, const enum Pi
     if(!this->class->enable_vaapi || !this->accel_img)
       return PIX_FMT_YUV420P;
 
-    //vo_frame_t *accel_img = this->stream->video_out->get_frame( this->stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
-
     vaapi_accel_t *accel = (vaapi_accel_t*)this->accel_img->accel_data;
 
     for (i = 0; fmt[i] != PIX_FMT_NONE; i++) {
@@ -395,11 +391,6 @@ static enum PixelFormat get_format(struct AVCodecContext *context, const enum Pi
 
             if(!va_context)
             {
-              /*
-              if(accel_img)
-                accel_img->free(accel_img);
-              */
-
               return PIX_FMT_YUV420P;
             }
 
@@ -414,20 +405,10 @@ static enum PixelFormat get_format(struct AVCodecContext *context, const enum Pi
             context->hwaccel_context     = &this->vaapi_context;
             this->pts = 0;
 
-            /*
-            if(accel_img)
-              accel_img->free(accel_img);
-            */
-
             return fmt[i];
           }
         }
     }
-
-    /*
-    if(accel_img)
-      accel_img->free(accel_img);
-    */
 
     return PIX_FMT_YUV420P;
 }
@@ -443,6 +424,8 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       pthread_mutex_lock(&ffmpeg_lock);
       this->codec = avcodec_find_decoder(ff_video_lookup[i].id);
       pthread_mutex_unlock(&ffmpeg_lock);
+      xprintf (this->stream->xine, XINE_VERBOSITY_LOG, "ffmpeg_video_dec: video codec %s\n", 
+                            ff_video_lookup[i].name);
       _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC,
                             ff_video_lookup[i].name);
       break;
@@ -477,6 +460,47 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
   if (this->class->choose_speed_over_accuracy)
     this->context->flags2 |= CODEC_FLAG2_FAST;
 
+  if(this->class->enable_vaapi)
+  {
+    this->class->thread_count = this->context->thread_count = 1;
+
+    this->context->skip_loop_filter = AVDISCARD_DEFAULT;
+    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+     _("ffmpeg_video_dec: force AVDISCARD_DEFAULT for VAAPI\n"));
+  } else {
+    this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
+  }
+
+  if (this->class->thread_count > 1) {
+    if (this->codec->id != CODEC_ID_SVQ3
+#ifndef DEPRECATED_AVCODEC_THREAD_INIT
+        && avcodec_thread_init(this->context, this->class->thread_count) != -1
+#endif
+      )
+      this->context->thread_count = this->class->thread_count;
+  }
+
+  /* enable direct rendering by default */
+  this->output_format = XINE_IMGFMT_YV12;
+#ifdef ENABLE_DIRECT_RENDERING
+  if( this->codec->capabilities & CODEC_CAP_DR1 && this->codec->id != CODEC_ID_H264 ) {
+    this->context->get_buffer = get_buffer;
+    this->context->release_buffer = release_buffer;
+    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+	    _("ffmpeg_video_dec: direct rendering enabled\n"));
+  }
+
+  if( this->class->enable_vaapi ) {
+    this->output_format = XINE_IMGFMT_VAAPI;
+    this->context->get_buffer = get_buffer;
+    this->context->reget_buffer = get_buffer;
+    this->context->release_buffer = release_buffer;
+    this->context->get_format = get_format;
+    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+	    _("ffmpeg_video_dec: direct rendering enabled\n"));
+  }
+#endif
+
   pthread_mutex_lock(&ffmpeg_lock);
   if (avcodec_open (this->context, this->codec) < 0) {
     pthread_mutex_unlock(&ffmpeg_lock);
@@ -503,27 +527,6 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       return;
     }
   }
-
-  if(this->class->enable_vaapi)
-  {
-    this->class->thread_count = this->context->thread_count = 1;
-
-    this->context->skip_loop_filter = AVDISCARD_DEFAULT;
-    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-     _("ffmpeg_video_dec: force AVDISCARD_DEFAULT for VAAPI\n"));
-  }
-
-  if (this->class->thread_count > 1) {
-    if (this->codec->id != CODEC_ID_SVQ3
-#ifndef DEPRECATED_AVCODEC_THREAD_INIT
-        && avcodec_thread_init(this->context, this->class->thread_count) != -1
-#endif
-      )
-      this->context->thread_count = this->class->thread_count;
-  }
-
-  this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
-
   pthread_mutex_unlock(&ffmpeg_lock);
 
   lprintf("lavc decoder opened\n");
@@ -545,27 +548,6 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
   (this->stream->video_out->open) (this->stream->video_out, this->stream);
 
   this->skipframes = 0;
-
-  /* enable direct rendering by default */
-  this->output_format = XINE_IMGFMT_YV12;
-#ifdef ENABLE_DIRECT_RENDERING
-  if( this->codec->capabilities & CODEC_CAP_DR1 && this->codec->id != CODEC_ID_H264 ) {
-    this->context->get_buffer = get_buffer;
-    this->context->release_buffer = release_buffer;
-    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-	    _("ffmpeg_video_dec: direct rendering enabled\n"));
-  }
-
-  if( this->class->enable_vaapi) {
-    this->output_format = XINE_IMGFMT_VAAPI;
-    this->context->get_buffer = get_buffer;
-    this->context->reget_buffer = get_buffer;
-    this->context->release_buffer = release_buffer;
-    this->context->get_format = get_format;
-    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-	    _("ffmpeg_video_dec: direct rendering enabled\n"));
-  }
-#endif
 
   /* flag for interlaced streams */
   this->frame_flags = 0;

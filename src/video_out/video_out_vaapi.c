@@ -1137,7 +1137,7 @@ static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, 
   int                 inited = 0;
 
   if(va_context->va_display == NULL) {
-    printf("profile_from_imgfmt vaInitialize\n");
+    lprintf("profile_from_imgfmt vaInitialize\n");
     inited = 1;
     va_context->va_display = vaapi_get_display(this->display, this->opengl_render);
     if(!va_context->va_display)
@@ -1167,7 +1167,7 @@ static int profile_from_imgfmt(vo_frame_t *frame_gen, enum PixelFormat pix_fmt, 
   uint32_t format = vaapi_pixfmt2imgfmt(pix_fmt, codec_id);
 
   static const int mpeg2_profiles[] = { VAProfileMPEG2Main, VAProfileMPEG2Simple, -1 };
-  static const int mpeg4_profiles[] = { VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Main, VAProfileMPEG4Simple, -1 };
+  static const int mpeg4_profiles[] = { VAProfileMPEG4Main, VAProfileMPEG4AdvancedSimple, VAProfileMPEG4Simple, -1 };
   static const int h264_profiles[]  = { VAProfileH264High, VAProfileH264Main, VAProfileH264Baseline, -1 };
   static const int wmv3_profiles[]  = { VAProfileVC1Main, VAProfileVC1Simple, -1 };
   static const int vc1_profiles[]   = { VAProfileVC1Advanced, -1 };
