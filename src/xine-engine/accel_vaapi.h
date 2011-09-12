@@ -94,6 +94,10 @@ struct ff_vaapi_context_s {
   VASurfaceID       last_sub_surface_id;
   struct SwsContext *convert_ctx;
   struct vaapi_equalizer va_equalizer;
+  VAImageFormat     *va_image_formats;
+  int               va_num_image_formats;
+  VAImageFormat     *va_subpic_formats;
+  int               va_num_subpic_formats;
 };
 
 typedef struct ff_vaapi_surface_s ff_vaapi_surface_t;
