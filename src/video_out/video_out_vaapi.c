@@ -71,13 +71,14 @@
 
 #include "accel_vaapi.h"
 
-#include <libswscale/swscale.h>
+//#include <libswscale/swscale.h>
 
 #define  RENDER_SURFACES  50
 #define  SOFT_SURFACES    3
 #define  SW_WIDTH         1920
 #define  SW_HEIGHT        1080
 #define  STABLE_FRAME_COUNTER 4
+#define  SW_CONTEXT_INIT_FORMAT 0 //VAProfileH264Main
 
 #if defined VA_SRC_BT601 && defined VA_SRC_BT709
 # define USE_VAAPI_COLORSPACE 1
@@ -244,6 +245,24 @@ static VAStatus vaapi_destroy_render_surfaces(vo_driver_t *this_gen);
 static const char *vaapi_profile_to_string(VAProfile profile);
 static int vaapi_set_property (vo_driver_t *this_gen, int property, int value);
 static void vaapi_show_display_props(vo_driver_t *this_gen);
+
+static void nv12_to_yv12(const uint8_t *y_src,  int y_src_pitch, 
+                         const uint8_t *uv_src, int uv_src_pitch, 
+                         uint8_t *y_dst, int y_dst_pitch,
+                         uint8_t *u_dst, int u_dst_pitch,
+                         uint8_t *v_dst, int v_dst_pitch,
+                         int src_width, int src_height, 
+                         int dst_width, int dst_height,
+                         int src_data_size);
+
+static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch, 
+                         const uint8_t *u_src, int u_src_pitch, 
+                         const uint8_t *v_src, int v_src_pitch,
+                         uint8_t *y_dst,  int y_dst_pitch,
+                         uint8_t *uv_dst, int uv_dst_pitch,
+                         int src_width, int src_height, 
+                         int dst_width, int dst_height,
+                         int dst_data_size);
 
 void (GLAPIENTRY *mpglGenTextures)(GLsizei, GLuint *);
 void (GLAPIENTRY *mpglBindTexture)(GLenum, GLuint);
@@ -1351,9 +1370,11 @@ static void vaapi_close(vo_driver_t *this_gen) {
   vaapi_check_status(this_gen, vaStatus, "vaTerminate()");
   va_context->va_display = NULL;
 
+  /*
   if(va_context->convert_ctx)
     sws_freeContext(va_context->convert_ctx);
   va_context->convert_ctx = NULL;
+  */
 
   if(va_context->va_image_formats) {
     free(va_context->va_image_formats);
@@ -1818,9 +1839,11 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
 #endif
   }
 
+  /*
   if(va_context->convert_ctx)
     sws_freeContext(va_context->convert_ctx);
   va_context->convert_ctx = NULL;
+  */
 
   va_context->sw_width  = width;
   va_context->sw_height = height;
@@ -2642,14 +2665,27 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
       vaStatus = vaMapBuffer( va_context->va_display, va_image.buf, &p_base ) ;
       if(vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()")) {
 
+        /*
         uint8_t *src[3] = { NULL, };
         src[0] = (uint8_t *)p_base + va_image.offsets[0];
         src[1] = (uint8_t *)p_base + va_image.offsets[1];
         src[2] = (uint8_t *)p_base + va_image.offsets[2];
+        */
 
         if( va_image.format.fourcc == VA_FOURCC( 'Y', 'V', '1', '2' ) ||
             va_image.format.fourcc == VA_FOURCC( 'I', '4', '2', '0' ) ) {
           lprintf("VAAPI YV12 image\n");
+
+          yv12_to_yv12(
+            (uint8_t*)p_base + va_image.offsets[0], va_image.pitches[0],
+            base[0], pitches[0],
+            (uint8_t*)p_base + va_image.offsets[1], va_image.pitches[1],
+            base[1], pitches[1],
+            (uint8_t*)p_base + va_image.offsets[2], va_image.pitches[2],
+            base[2], pitches[2],
+            va_image.width, va_image.height);
+
+          /*
           va_context->convert_ctx = sws_getCachedContext(va_context->convert_ctx, va_image.width, va_image.height, PIX_FMT_YUV420P, 
                                                  width, height, PIX_FMT_YUV420P, 
                                                  SWS_FAST_BILINEAR, NULL, NULL, NULL);
@@ -2657,6 +2693,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
             sws_scale(va_context->convert_ctx, (const uint8_t * const*)src, va_image.pitches, 0, va_image.height, 
                       (uint8_t * const*)base, pitches);
           }
+          */
         } else if( va_image.format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' ) ) {
           lprintf("VAAPI NV12 image\n");
 
@@ -2664,14 +2701,25 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
               va_image.offsets[0], va_image.offsets[1], va_image.offsets[2], va_image.data_size, va_image.width * va_image.height,
               data->img_size, width, height, va_image.width, va_image.height);
 
+          /*
           src[0] = (uint8_t *)p_base + va_image.offsets[0];
           src[1] = (uint8_t *)p_base + va_image.offsets[1];
           src[2] = NULL;
+          */
 
           base[0] = data->img;
           base[1] = data->img + width * height;
           base[2] = data->img + width * height + width * height / 4;
 
+          nv12_to_yv12((uint8_t *)p_base + va_image.offsets[0], va_image.pitches[0],
+                       (uint8_t *)p_base + va_image.offsets[1], va_image.pitches[1],
+                       base[0], pitches[0],
+                       base[1], pitches[1],
+                       base[2], pitches[2],
+                       va_image.width,  va_image.height, 
+                       width, height, 
+                       va_image.data_size);
+      /*
           va_context->convert_ctx = sws_getCachedContext(va_context->convert_ctx, va_image.width, va_image.height, PIX_FMT_NV12, 
                                                  width, height, PIX_FMT_YUV420P, 
                                                  SWS_FAST_BILINEAR | SWS_BITEXACT, NULL, NULL, NULL);
@@ -2680,6 +2728,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
             sws_scale(va_context->convert_ctx, (const uint8_t * const*)src, va_image.pitches, 0, va_image.height, 
                       (uint8_t * const*)base, pitches);
           }
+          */
         } else {
           printf("vaapi_provide_standard_frame_data unsupported image format\n");
         }
@@ -2902,22 +2951,22 @@ static inline uint8_t clip_uint8_vlc( int32_t a )
 }
 
 
-static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch, 
-                         const uint8_t *u_src, int u_src_pitch, 
-                         const uint8_t *v_src, int v_src_pitch,
+static void nv12_to_yv12(const uint8_t *y_src,  int y_src_pitch, 
+                         const uint8_t *uv_src, int uv_src_pitch, 
                          uint8_t *y_dst, int y_dst_pitch,
-                         uint8_t *uv_dst, int uv_dst_pitch,
+                         uint8_t *u_dst, int u_dst_pitch,
+                         uint8_t *v_dst, int v_dst_pitch,
                          int src_width, int src_height, 
                          int dst_width, int dst_height,
-                         int dst_data_size) {
+                         int src_data_size) {
 
-  //int uv_dst_size = dst_height * uv_dst_pitch;
-  int y_dst_size  = dst_height * y_dst_pitch;
+  int y_src_size  = src_height * y_src_pitch;
   int y, x;
 
   /*
-  if((y_dst_size + uv_dst_size) != (dst_data_size))
-    printf("yv12_to_nv12 strange %d\n", (y_dst_size + uv_dst_size) - (dst_data_size));
+  int uv_src_size = src_height * uv_src_pitch / 2;
+  if((y_src_size + uv_src_size) != (src_data_size))
+    printf("nv12_to_yv12 strange %d\n", (y_src_size + uv_src_size) - (src_data_size));
   */
 
   for(y = 0; y < src_height; y++) {
@@ -2927,57 +2976,66 @@ static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch,
   }
 
   for(y = 0; y < src_height; y++) {
+    const uint8_t *uv_src_tmp = uv_src;
+    for(x = 0; x < u_dst_pitch; x++) {
+      if((y_src_size + (y * uv_src_pitch) + x + 1) <
+         src_data_size) {
+        *(u_dst + x) = *(uv_src_tmp    );
+        *(v_dst + x) = *(uv_src_tmp + 1);
+      }
+      uv_src_tmp += 2;
+    }
+    uv_src += uv_src_pitch;
+    u_dst += u_dst_pitch;
+    v_dst += v_dst_pitch;
+  }
+}
+
+static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch, 
+                         const uint8_t *u_src, int u_src_pitch, 
+                         const uint8_t *v_src, int v_src_pitch,
+                         uint8_t *y_dst,  int y_dst_pitch,
+                         uint8_t *uv_dst, int uv_dst_pitch,
+                         int src_width, int src_height, 
+                         int dst_width, int dst_height,
+                         int dst_data_size) {
+
+  int y_dst_size  = dst_height * y_dst_pitch;
+  int y, x;
+
+  lprintf("yv12_to_nv12 converter\n");
+
+  int uv_dst_size = dst_height * uv_dst_pitch / 2;
+  if((y_dst_size + uv_dst_size) != (dst_data_size))
+    printf("yv12_to_nv12 strange %d\n", (y_dst_size + uv_dst_size) - (dst_data_size));
+
+  int height  = (src_height > dst_height) ? dst_height : src_height;
+  int width   = (src_width > dst_width) ? dst_width : src_width;
+  int uv_dst_pitch_half = uv_dst_pitch / 2;
+
+  for(y = 0; y < height; y++) {
+    xine_fast_memcpy(y_dst, y_src, width);
+    y_src += y_src_pitch;
+    y_dst += y_dst_pitch;
+  }
+
+  for(y = 0; y < height; y++) {
     uint8_t *uv_dst_tmp = uv_dst;
     for(x = 0; x < u_src_pitch; x++) {
-      if((y_dst_size + (y * uv_dst_pitch) + x + 1) <
-         dst_data_size) {
+//      if(((y * uv_dst_pitch) + x + 1) < uv_dst_size) {
+//      if((y_dst_size + (y * uv_dst_pitch) + x + 1) <
+//         dst_data_size) {
+      if(((y * uv_dst_pitch) + x) < uv_dst_size) {
         *(uv_dst_tmp    ) = *(u_src + x);
         *(uv_dst_tmp + 1) = *(v_src + x);
       }
+//      }
       uv_dst_tmp += 2;
     }
     uv_dst += uv_dst_pitch;
     u_src += u_src_pitch;
     v_src += v_src_pitch;
   }
-
-/*
-      uint8_t *y_src = frame_gen->base[0];
-      uint8_t *u_src = frame_gen->base[1];
-      uint8_t *v_src = frame_gen->base[2];
-      uint8_t *y_dst = (uint8_t *)p_base + va_image->offsets[0];
-      uint8_t *uv_dst = (uint8_t *)p_base + va_image->offsets[1];
-      int y_src_pitch = frame_gen->pitches[0];
-      int u_src_pitch = frame_gen->pitches[1];
-      int v_src_pitch = frame_gen->pitches[2];
-      int y_dst_pitch = va_image->pitches[0];
-      int uv_dst_pitch = va_image->pitches[1];
-      int uv_dst_size = va_image->height * va_image->pitches[1];
-      int height = frame_gen->height;
-      int width = frame_gen->width;
-      int y, x;
-
-      for(y = 0; y < height; y++) {
-        xine_fast_memcpy(y_dst, y_src, width);
-        y_src += y_src_pitch;
-        y_dst += y_dst_pitch;
-      }
-
-      for(y = 0; y < height; y++) {
-        uint8_t *uv_dst_tmp = uv_dst;
-        for(x = 0; x < u_src_pitch; x++) {
-          if((uv_dst_tmp + uv_dst_pitch) <
-              ((uint8_t *)p_base + va_image->data_size)) {
-            *(uv_dst_tmp    ) = *(u_src + x);
-            *(uv_dst_tmp + 1) = *(v_src + x);
-          }
-          uv_dst_tmp += 2;
-        }
-        uv_dst += uv_dst_pitch;
-        u_src += u_src_pitch;
-        v_src += v_src_pitch;
-      }
-*/
 }
 
 static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *frame_gen, 
@@ -3003,7 +3061,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaMapBuffer()"))
     return vaStatus;
 
-  uint8_t *dst[3] = { NULL, };
+  //uint8_t *dst[3] = { NULL, };
 
   /* Copy xine frames into VAAPI images */
   if(frame->format == XINE_IMGFMT_YV12) {
@@ -3012,6 +3070,20 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
         va_image->format.fourcc == VA_FOURCC( 'I', '4', '2', '0' ) ) {
       lprintf("vaapi_software_render_frame yv12 -> yv12 convert\n");
 
+      yv12_to_yv12(
+                  /* Y */
+                  frame_gen->base[0], frame_gen->pitches[0],
+                  (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
+                  /* U */
+                  frame_gen->base[1], frame_gen->pitches[1],
+                  (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
+                  /* V */
+                  frame_gen->base[2], frame_gen->pitches[2],
+                  (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
+                  /* width x height */
+                  frame_gen->width, frame_gen->height);
+
+      /*
       dst[0] = (uint8_t *)p_base + va_image->offsets[0];
       dst[1] = (uint8_t *)p_base + va_image->offsets[2];
       dst[2] = (uint8_t *)p_base + va_image->offsets[1];
@@ -3023,6 +3095,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
         sws_scale(va_context->convert_ctx, (const uint8_t * const*)frame_gen->base, frame_gen->pitches, 0, frame_gen->height, 
                     dst, va_image->pitches);
       }
+      */
     } else if (va_image->format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' )) {
       lprintf("vaapi_software_render_frame yv12 -> nv12 convert\n");
 
@@ -3034,7 +3107,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
                    frame_gen->width, frame_gen->height, 
                    va_image->width,  va_image->height, 
                    va_image->data_size);
-#if 0
+      /*
       dst[0] = (uint8_t *)p_base + va_image->offsets[0];
       dst[1] = (uint8_t *)p_base + va_image->offsets[1];
       dst[2] = NULL;
@@ -3047,12 +3120,26 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
         sws_scale(va_context->convert_ctx, (const uint8_t * const*)frame_gen->base, frame_gen->pitches, 0, frame_gen->height, 
                     (uint8_t* const*)dst, va_image->pitches);
       }
-#endif
+      */
     }
   } else if (frame->format == XINE_IMGFMT_YUY2) {
 
-    lprintf("vaapi_software_render_frame yuy2 -> yv12 convert\n");
+    if (va_image->format.fourcc == VA_FOURCC( 'Y', 'V', '1', '2' ) ||
+        va_image->format.fourcc == VA_FOURCC( 'I', '4', '2', '0' ) ) {
+      lprintf("vaapi_software_render_frame yuy2 -> yv12 convert\n");
 
+      yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
+                  (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
+                  (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
+                  (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
+                  frame_gen->width, frame_gen->height);
+
+    } else if (va_image->format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' )) {
+      lprintf("vaapi_software_render_frame yuy2 -> nv12 convert\n");
+      printf("yuy2 -> nv12 convert missing\n");
+    }
+
+    /*
     dst[0] = (uint8_t *)p_base + va_image->offsets[0];
     dst[1] = (uint8_t *)p_base + va_image->offsets[2];
     dst[2] = (uint8_t *)p_base + va_image->offsets[1];
@@ -3064,6 +3151,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
       sws_scale(va_context->convert_ctx, (const uint8_t * const*)frame_gen->base, frame_gen->pitches, 0, frame_gen->height, 
                   dst, va_image->pitches);
     }
+    */
   }
 
   vaStatus = vaUnmapBuffer(va_context->va_display, va_image->buf);
@@ -3246,7 +3334,8 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
     if(!va_context->valid_context) {
       printf("vaapi_display_frame init full context\n");
-      vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+      //vaapi_init_internal(frame_gen->driver, 0, frame->width, frame->height, 1);
+      vaapi_init_internal(frame_gen->driver, SW_CONTEXT_INIT_FORMAT, frame->width, frame->height, 0);
     } else {
       lprintf("vaapi_display_frame init soft surfaces\n");
       vaapi_init_soft_surfaces(frame_gen->driver, frame->width, frame->height);
@@ -3300,12 +3389,14 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     this->reinit_rendering = 0;
   }
 
+  /*
   double start_time;
   double end_time;
   double elapse_time;
   int factor;
 
   start_time = timeOfDay();
+  */
 
   //int stream_speed = frame->vo_frame.stream ? xine_get_param(frame->vo_frame.stream, XINE_PARAM_FINE_SPEED) : 0;
   //printf("stream_speed %d\n", stream_speed);
@@ -3383,7 +3474,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   XSync(this->display, False);
 
-  end_time = timeOfDay();
+  //end_time = timeOfDay();
 
   if(this->guarded_render) {
     ff_vaapi_surface_t *va_surface = &va_render_surfaces[accel->index];
@@ -3407,6 +3498,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   pthread_mutex_unlock(&this->vaapi_lock);
 
+  /*
   elapse_time = end_time - start_time;
   factor = (int)(elapse_time/(1.0/60.0));
 
@@ -3414,6 +3506,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   {
     xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " PutImage %dX interval (%fs)\n", factor, elapse_time );
   }
+  */
 }
 
 static int vaapi_get_property (vo_driver_t *this_gen, int property) {
@@ -3860,15 +3953,15 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->va_context->last_sub_surface_id      = VA_INVALID_SURFACE;
   this->va_context->last_sub_image_fmt       = 0;
 
-  if(vaapi_init_internal((vo_driver_t *)this, 0, SW_WIDTH, SW_HEIGHT, 1) != VA_STATUS_SUCCESS) {
+  //if(vaapi_init_internal((vo_driver_t *)this, 0, SW_WIDTH, SW_HEIGHT, 1) != VA_STATUS_SUCCESS) {
+  if(vaapi_init_internal((vo_driver_t *)this, SW_CONTEXT_INIT_FORMAT, SW_WIDTH, SW_HEIGHT, 0) != VA_STATUS_SUCCESS) {
     vaapi_dispose((vo_driver_t *)this);
     return NULL;
   }
-
   vaapi_close((vo_driver_t *)this);
   this->va_context->valid_context = 0;
   this->va_context->driver        = (vo_driver_t *)this;
-  this->va_context->convert_ctx   = NULL;
+  //this->va_context->convert_ctx   = NULL;
 
   pthread_mutex_unlock(&this->vaapi_lock);
 

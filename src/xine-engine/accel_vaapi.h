@@ -42,7 +42,7 @@ extern "C" {
 #  include <libavcodec/avcodec.h>
 #endif
 
-#include <libswscale/swscale.h>
+//#include <libswscale/swscale.h>
 
 #if LIBAVCODEC_VERSION_MAJOR >= 53 || (LIBAVCODEC_VERSION_MAJOR == 52 && LIBAVCODEC_VERSION_MINOR >= 32)
 #  define AVVIDEO 2
@@ -92,7 +92,7 @@ struct ff_vaapi_context_s {
   vo_driver_t       *driver;
   unsigned int      last_sub_image_fmt;
   VASurfaceID       last_sub_surface_id;
-  struct SwsContext *convert_ctx;
+  //struct SwsContext *convert_ctx;
   struct vaapi_equalizer va_equalizer;
   VAImageFormat     *va_image_formats;
   int               va_num_image_formats;
