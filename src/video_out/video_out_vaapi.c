@@ -2963,23 +2963,26 @@ static void nv12_to_yv12(const uint8_t *y_src,  int y_src_pitch,
   int y_src_size  = src_height * y_src_pitch;
   int y, x;
 
-  /*
   int uv_src_size = src_height * uv_src_pitch / 2;
   if((y_src_size + uv_src_size) != (src_data_size))
     printf("nv12_to_yv12 strange %d\n", (y_src_size + uv_src_size) - (src_data_size));
-  */
 
-  for(y = 0; y < src_height; y++) {
-    xine_fast_memcpy(y_dst, y_src, src_width);
+  int height  = (src_height > dst_height) ? dst_height : src_height;
+  int width   = (src_width > dst_width) ? dst_width : src_width;
+  int uv_src_pitch_half = uv_src_pitch / 2;
+
+  for(y = 0; y < height; y++) {
+    xine_fast_memcpy(y_dst, y_src, width);
     y_src += y_src_pitch;
     y_dst += y_dst_pitch;
   }
 
-  for(y = 0; y < src_height; y++) {
+  for(y = 0; y < height; y++) {
     const uint8_t *uv_src_tmp = uv_src;
     for(x = 0; x < u_dst_pitch; x++) {
-      if((y_src_size + (y * uv_src_pitch) + x + 1) <
-         src_data_size) {
+      //if((y_src_size + (y * uv_src_pitch) + x + 1) <
+      //   src_data_size) {
+      if(((y * uv_src_pitch) + x) < uv_src_size) {
         *(u_dst + x) = *(uv_src_tmp    );
         *(v_dst + x) = *(uv_src_tmp + 1);
       }
