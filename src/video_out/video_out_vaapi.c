@@ -224,7 +224,7 @@ struct vaapi_driver_s {
 
   pthread_mutex_t     vaapi_lock;
 
-  unsigned int        reinit_rendering;
+  unsigned int        init_opengl_render;
   unsigned int        guarded_render;
   va_property_t       props[VO_NUM_PROPERTIES];
   vaapi_frame_t       *cur_frame;
@@ -651,7 +651,7 @@ static void vaapi_get_functions(vo_driver_t *this_gen, void *(*getProcAddress)(c
   strcpy(allexts, extensions);
   strcat(allexts, " ");
   strcat(allexts, ext2);
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " OpenGL extensions string:\n%s\n", allexts);
+  lprintf("vaapi_get_functions: OpenGL extensions string:\n%s\n", allexts);
   for (dsc = extfuncs; dsc->funcptr; dsc++) {
     void *ptr = NULL;
     int i;
@@ -663,7 +663,7 @@ static void vaapi_get_functions(vo_driver_t *this_gen, void *(*getProcAddress)(c
         ptr = dsc->fallback;
     *(void **)dsc->funcptr = ptr;
   }
-  printf("\n");
+  lprintf("\n");
   free(allexts);
 }
 
@@ -676,7 +676,7 @@ static int vaapi_opengl_verify_direct (x11_visual_t *vis) {
   int           ret = 0;
 
   if (!vis || !vis->display || ! (root = RootWindow (vis->display, vis->screen))) {
-    fprintf (stderr, "vo_vaapi: Don't have a root window to verify\n");
+    lprintf ("vaapi_opengl_verify_direct: Don't have a root window to verify\n");
     return 0;
   }
 
@@ -1973,6 +1973,8 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender tfp  : %d\n", this->opengl_use_tfp);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : is_bound       : %d\n", va_context->is_bound);
 
+  this->init_opengl_render = 1;
+
   return VA_STATUS_SUCCESS;
 
 error:
@@ -3266,6 +3268,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     }
 
     this->sc.force_redraw = 1;
+    this->init_opengl_render = 1;
 
     if(last_sub_img_fmt)
       vaapi_ovl_associate(this_gen, frame_gen->format, 1);
@@ -3282,18 +3285,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
-  /* The opengl rendering is not inititalized till here.
-   * Lets do the opengl magic and inititalize it.
-   * Opengl init must be done before redraw 
-   */
-  if(this->opengl_render && !this->valid_opengl_context && va_context->valid_context) {
-    this->reinit_rendering = 1;
-    //if(vaapi_glx_config_glx(frame_gen->driver, frame->width, frame->height))
-    //  this->sc.force_redraw = 1;
-  }
 
-  /* reinit of the rendering was triggered */
-  if(this->reinit_rendering) {
+  /* initialize opengl rendering */
+  if(this->init_opengl_render && this->opengl_render && va_context->valid_context) {
     unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
     if(last_sub_img_fmt)
@@ -3301,16 +3295,15 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
     destroy_glx(this_gen);
 
-    vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
+    vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
 
-    if(this->opengl_render && va_context->valid_context)
-      vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
+    vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
 
     if(last_sub_img_fmt)
       vaapi_ovl_associate(this_gen, frame_gen->format, 1);
 
     this->sc.force_redraw = 1;
-    this->reinit_rendering = 0;
+    this->init_opengl_render = 0;
   }
 
   /*
@@ -3553,6 +3546,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_EXPOSE_EVENT:\n");
     this->sc.force_redraw = 1;
+    this->init_opengl_render = 1;
     XUnlockDisplay( this->display );
     pthread_mutex_unlock(&this->vaapi_lock);
   }
@@ -3568,7 +3562,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
 
-    this->reinit_rendering = 1;
+    this->init_opengl_render = 1;
     destroy_glx(this_gen);
 
     this->drawable = (Drawable) data;
@@ -3644,8 +3638,6 @@ static void vaapi_vdr_osd_width_flag( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->vdr_osd_width = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: vdr_osd_width=%d\n", this->vdr_osd_width );
 }
 
 static void vaapi_vdr_osd_height_flag( void *this_gen, xine_cfg_entry_t *entry )
@@ -3653,8 +3645,6 @@ static void vaapi_vdr_osd_height_flag( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->vdr_osd_height = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: vdr_osd_height=%d\n", this->vdr_osd_height );
 }
 
 static void vaapi_deinterlace_flag( void *this_gen, xine_cfg_entry_t *entry )
@@ -3664,8 +3654,6 @@ static void vaapi_deinterlace_flag( void *this_gen, xine_cfg_entry_t *entry )
   this->deinterlace = entry->num_value;
   if(this->deinterlace > 2)
     this->deinterlace = 2;
-
-  fprintf(stderr, "vo_vaapi: deinterlace=%d\n", this->deinterlace );
 }
 
 static void vaapi_opengl_render( void *this_gen, xine_cfg_entry_t *entry )
@@ -3673,8 +3661,6 @@ static void vaapi_opengl_render( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->opengl_render = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: opengl_render=%d\n", this->opengl_render );
 }
 
 static void vaapi_opengl_use_tfp( void *this_gen, xine_cfg_entry_t *entry )
@@ -3682,8 +3668,6 @@ static void vaapi_opengl_use_tfp( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->opengl_use_tfp = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: opengl_use_tfp=%d\n", this->opengl_use_tfp );
 }
 
 static void vaapi_guarded_render( void *this_gen, xine_cfg_entry_t *entry )
@@ -3691,8 +3675,6 @@ static void vaapi_guarded_render( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->guarded_render = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: guarded_render=%d\n", this->guarded_render );
 }
 
 static void vaapi_swap_uv_planes(void *this_gen, xine_cfg_entry_t *entry) 
@@ -3700,8 +3682,6 @@ static void vaapi_swap_uv_planes(void *this_gen, xine_cfg_entry_t *entry)
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->swap_uv_planes = entry->num_value;
-
-  fprintf(stderr, "vo_vaapi: swap_uv_planes=%d\n", this->swap_uv_planes );
 }
 
 static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const void *visual_gen) {
@@ -3751,8 +3731,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
         _("vaapi: opengl output rendering"),
         20, vaapi_opengl_render, this );
   
-  // TODO: fix glx rendering path
-  this->opengl_render = 0;
+  this->init_opengl_render = 1;
 
   this->opengl_use_tfp = config->register_bool( config, "video.output.vaapi_opengl_use_tfp", 0,
         _("vaapi: opengl rendering tfp"),
@@ -3841,7 +3820,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->deinterlace                    = 0;
   this->vdr_osd_width                  = 0;
   this->vdr_osd_height                 = 0;
-  this->reinit_rendering               = 0;
 
   this->vdr_osd_width = config->register_num( config, "video.output.vaapi_vdr_osd_width", 0,
         _("vaapi: VDR osd width workaround."),
