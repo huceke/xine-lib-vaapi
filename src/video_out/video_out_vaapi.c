@@ -630,8 +630,6 @@ static void *vaapi_getdladdr (const char *s) {
 /* Resolve opengl functions. */
 static void vaapi_get_functions(vo_driver_t *this_gen, void *(*getProcAddress)(const GLubyte *),
                          const char *ext2) {
-  vaapi_driver_t *this = (vaapi_driver_t *) this_gen;
-
   const extfunc_desc_t *dsc;
   const char *extensions;
   char *allexts;
@@ -799,17 +797,22 @@ static void destroy_glx(vo_driver_t *this_gen)
   vaapi_driver_t        *this       = (vaapi_driver_t *) this_gen;
   ff_vaapi_context_t    *va_context = this->va_context;
 
-  if(!this->opengl_render || !this->valid_opengl_context)
+  if(!this->opengl_render || !va_context->valid_context)
     return;
 
   //if (gl_finish)
   //  glFinish();
+
+  XSync(this->display, False);
 
   if(va_context->gl_surface) {
     VAStatus vaStatus = vaDestroySurfaceGLX(va_context->va_display, va_context->gl_surface);
     vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaceGLX()");
     va_context->gl_surface = NULL;
   }
+
+  if(this->gl_context)
+    glXMakeCurrent(this->display, None, NULL);
 
   if(this->gl_pixmap) {
     vaapi_x11_trap_errors();
@@ -830,7 +833,6 @@ static void destroy_glx(vo_driver_t *this_gen)
   }
 
   if(this->gl_context) {
-    glXMakeCurrent(this->display, None, NULL);
     glXDestroyContext(this->display, this->gl_context);
     this->gl_context = 0;
   }
@@ -1344,9 +1346,10 @@ static void vaapi_close(vo_driver_t *this_gen) {
   if(!va_context || !va_context->va_display || !va_context->valid_context)
     return;
 
+  vaapi_ovl_associate(this_gen, 0, 0);
+
   destroy_glx((vo_driver_t *)this);
 
-  vaapi_ovl_associate(this_gen, 0, 0);
   vaapi_destroy_subpicture(this_gen);
 
   vaapi_destroy_soft_surfaces(this_gen);
@@ -3082,9 +3085,11 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
   vaStatus = vaUnmapBuffer(va_context->va_display, va_image->buf);
   vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()");
 
-  vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
+  if(!va_context->is_bound) {
+    vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
                         0, 0, va_image->width, va_image->height,
                         0, 0, va_image->width, va_image->height);
+  }
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
     return vaStatus;
 
@@ -3131,6 +3136,9 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
             interlaced_frame, top_field_first);
 
     if(this->opengl_render) {
+
+      if(!this->valid_opengl_context)
+        return VA_STATUS_ERROR_UNKNOWN;
 
       vaapi_x11_trap_errors();
 
@@ -3314,9 +3322,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   start_time = timeOfDay();
   */
-
-  //int stream_speed = frame->vo_frame.stream ? xine_get_param(frame->vo_frame.stream, XINE_PARAM_FINE_SPEED) : 0;
-  //printf("stream_speed %d\n", stream_speed);
 
   if(va_context->valid_context && ( (frame->format == XINE_IMGFMT_VAAPI) || (frame->format == XINE_IMGFMT_YV12) || (frame->format == XINE_IMGFMT_YUY2) )) {
 
@@ -3562,7 +3567,6 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
 
-    this->init_opengl_render = 1;
     destroy_glx(this_gen);
 
     this->drawable = (Drawable) data;
@@ -3570,6 +3574,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     XReparentWindow(this->display, this->window, this->drawable, 0, 0);
 
     this->sc.force_redraw = 1;
+    this->init_opengl_render = 1;
 
     XUnlockDisplay( this->display );
     pthread_mutex_unlock(&this->vaapi_lock);
@@ -3748,6 +3753,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->gl_vinfo                        = NULL;
   this->gl_pixmap                       = None;
   this->gl_image_pixmap                 = None;
+  this->gl_texture                      = GL_NONE;
 
   this->num_frame_buffers               = 0;
 
