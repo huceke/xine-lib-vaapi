@@ -367,50 +367,47 @@ static const int skip_loop_filter_enum_values[] = {
 
 static enum PixelFormat get_format(struct AVCodecContext *context, const enum PixelFormat *fmt)
 {
-    int i, profile;
-    ff_video_decoder_t *this = (ff_video_decoder_t *)context->opaque;
+  int i, profile;
+  ff_video_decoder_t *this = (ff_video_decoder_t *)context->opaque;
 
-    if(!this->class->enable_vaapi || !this->accel_img)
-      return PIX_FMT_YUV420P;
-
-    vaapi_accel_t *accel = (vaapi_accel_t*)this->accel_img->accel_data;
-
-    for (i = 0; fmt[i] != PIX_FMT_NONE; i++) {
-        if (fmt[i] != PIX_FMT_VAAPI_VLD)
-            continue;
-
-        profile = accel->profile_from_imgfmt(this->accel_img, fmt[i], context->codec_id, this->class->vaapi_mpeg_softdec);
-
-        if (profile >= 0) {
-          VAStatus status;
-
-          status = accel->vaapi_init(this->accel_img, profile, context->width, context->height, 0);
-
-          if( status == VA_STATUS_SUCCESS ) {
-            ff_vaapi_context_t *va_context = accel->get_context(this->accel_img);
-
-            if(!va_context)
-            {
-              return PIX_FMT_YUV420P;
-            }
-
-            context->draw_horiz_band = NULL;
-            context->slice_flags = SLICE_FLAG_CODED_ORDER | SLICE_FLAG_ALLOW_FIELD;
-            context->dsp_mask = 0;
-
-            this->vaapi_context.config_id    = va_context->va_config_id;
-            this->vaapi_context.context_id   = va_context->va_context_id;
-            this->vaapi_context.display      = va_context->va_display;
-
-            context->hwaccel_context     = &this->vaapi_context;
-            this->pts = 0;
-
-            return fmt[i];
-          }
-        }
-    }
-
+  if(!this->class->enable_vaapi || !this->accel_img)
     return PIX_FMT_YUV420P;
+
+  vaapi_accel_t *accel = (vaapi_accel_t*)this->accel_img->accel_data;
+
+  for (i = 0; fmt[i] != PIX_FMT_NONE; i++) {
+    if (fmt[i] != PIX_FMT_VAAPI_VLD)
+      continue;
+
+    profile = accel->profile_from_imgfmt(this->accel_img, fmt[i], context->codec_id, this->class->vaapi_mpeg_softdec);
+
+    if (profile >= 0) {
+      VAStatus status;
+
+      status = accel->vaapi_init(this->accel_img, profile, context->width, context->height, 0);
+
+      if( status == VA_STATUS_SUCCESS ) {
+        ff_vaapi_context_t *va_context = accel->get_context(this->accel_img);
+
+        if(!va_context)
+          return PIX_FMT_YUV420P;
+
+        context->draw_horiz_band = NULL;
+        context->slice_flags = SLICE_FLAG_CODED_ORDER | SLICE_FLAG_ALLOW_FIELD;
+        context->dsp_mask = 0;
+
+        this->vaapi_context.config_id    = va_context->va_config_id;
+        this->vaapi_context.context_id   = va_context->va_context_id;
+        this->vaapi_context.display      = va_context->va_display;
+
+        context->hwaccel_context     = &this->vaapi_context;
+        this->pts = 0;
+
+        return fmt[i];
+      }
+    }
+  }
+  return PIX_FMT_YUV420P;
 }
 
 static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type) {
