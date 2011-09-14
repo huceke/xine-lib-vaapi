@@ -3079,10 +3079,10 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
                   (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
                   /* U */
                   frame_gen->base[1], frame_gen->pitches[1],
-                  (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
+                  (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
                   /* V */
                   frame_gen->base[2], frame_gen->pitches[2],
-                  (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
+                  (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
                   /* width x height */
                   frame_gen->width, frame_gen->height);
 
