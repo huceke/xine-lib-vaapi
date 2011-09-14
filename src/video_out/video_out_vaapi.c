@@ -1487,14 +1487,14 @@ static void vaapi_destroy_subpicture(vo_driver_t *this_gen) {
   lprintf("destroy sub 0x%08x 0x%08x 0x%08x\n", va_context->va_subpic_id, 
       va_context->va_subpic_image.image_id, va_context->va_subpic_image.buf);
 
-  vaapi_destroy_image(this_gen, &va_context->va_subpic_image);
-
   if(va_context->va_subpic_id != VA_INVALID_ID) {
     vaStatus = vaDestroySubpicture(va_context->va_display, va_context->va_subpic_id);
     vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
   }
-
   va_context->va_subpic_id = VA_INVALID_ID;
+
+  vaapi_destroy_image(this_gen, &va_context->va_subpic_image);
+
 }
 
 /* Create VAAPI subpicture */
@@ -2120,21 +2120,22 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int format, int bShow) {
   ff_vaapi_context_t  *va_context = this->va_context;
   VAStatus vaStatus;
 
-  if(!va_context->valid_context || va_context->va_subpic_id == VA_INVALID_ID)
+  if(!va_context->valid_context)
     return 0;
 
   if(va_context->last_sub_image_fmt && !bShow) {
-    //if(va_context->last_sub_image_fmt == XINE_IMGFMT_VAAPI) {
-      vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                              va_surface_ids, RENDER_SURFACES);
-      vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
-    //} else if(va_context->last_sub_image_fmt == XINE_IMGFMT_YV12 ||
-    //          va_context->last_sub_image_fmt == XINE_IMGFMT_YUY2) {
-      vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
-                              va_soft_surface_ids, SOFT_SURFACES);
-      vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
-    //}
-
+    if(va_context->va_subpic_id != VA_INVALID_ID) {
+      if(va_context->last_sub_image_fmt == XINE_IMGFMT_VAAPI) {
+        vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+                                va_surface_ids, RENDER_SURFACES);
+        vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
+      } else if(va_context->last_sub_image_fmt == XINE_IMGFMT_YV12 ||
+                va_context->last_sub_image_fmt == XINE_IMGFMT_YUY2) {
+        vaStatus = vaDeassociateSubpicture(va_context->va_display, va_context->va_subpic_id,
+                                va_soft_surface_ids, SOFT_SURFACES);
+        vaapi_check_status(this_gen, vaStatus, "vaDeassociateSubpicture()");
+      }
+    }
     va_context->last_sub_image_fmt = 0;
     return 1;
   }
@@ -2143,6 +2144,23 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int format, int bShow) {
     unsigned int flags = 0;
     unsigned int output_width = va_context->width;
     unsigned int output_height = va_context->height;
+    void *p_base = NULL;
+
+    VAStatus vaStatus;
+
+    vaapi_destroy_subpicture(this_gen);
+    vaStatus = vaapi_create_subpicture(this_gen, this->overlay_bitmap_width, this->overlay_bitmap_height);
+    if(!vaapi_check_status(this_gen, vaStatus, "vaapi_create_subpicture()"))
+      return 0;
+
+    vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
+    if(!vaapi_check_status(this_gen, vaStatus, "vaMapBuffer()"))
+      return 0;
+
+    xine_fast_memcpy((uint32_t *)p_base, this->overlay_bitmap, this->overlay_bitmap_width * this->overlay_bitmap_height * sizeof(uint32_t));
+
+    vaStatus = vaUnmapBuffer(va_context->va_display, va_context->va_subpic_image.buf);
+    vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()");
 
     lprintf( "vaapi_ovl_associate: overlay_width=%d overlay_height=%d unscaled %d va_subpic_id 0x%08x ovl_changed %d has_overlay %d bShow %d overlay_bitmap_width %d overlay_bitmap_height %d va_context->width %d va_context->height %d\n", 
            this->overlay_output_width, this->overlay_output_height, this->has_overlay, 
@@ -2150,19 +2168,19 @@ static int vaapi_ovl_associate(vo_driver_t *this_gen, int format, int bShow) {
            this->overlay_bitmap_width, this->overlay_bitmap_height,
            va_context->width, va_context->height);
 
-    //if(format == XINE_IMGFMT_VAAPI) {
-    //  lprintf("vaapi_ovl_associate hw\n");
+    if(format == XINE_IMGFMT_VAAPI) {
+      lprintf("vaapi_ovl_associate hw\n");
       vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
                               va_surface_ids, RENDER_SURFACES,
                               0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
                               0, 0, output_width, output_height, flags);
-    //} else {
-    //  lprintf("vaapi_ovl_associate sw\n");
+    } else {
+      lprintf("vaapi_ovl_associate sw\n");
       vaStatus = vaAssociateSubpicture(va_context->va_display, va_context->va_subpic_id,
                               va_soft_surface_ids, SOFT_SURFACES,
                               0, 0, va_context->va_subpic_image.width, va_context->va_subpic_image.height,
                               0, 0, va_soft_images[0].width, va_soft_images[0].height, flags);
-    //}
+    }
 
     if(vaapi_check_status(this_gen, vaStatus, "vaAssociateSubpicture()")) {
       va_context->last_sub_image_fmt = format;
@@ -2404,16 +2422,6 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     memset(this->overlay_bitmap, 0x0, this->overlay_bitmap_size * sizeof(uint32_t));
   }
 
-  VAStatus vaStatus;
-
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
-
-  vaapi_destroy_subpicture(frame_gen->driver);
-  vaStatus = vaapi_create_subpicture(frame_gen->driver, this->overlay_bitmap_width, this->overlay_bitmap_height);
-  if(!vaapi_check_status(frame_gen->driver, vaStatus, "vaapi_create_subpicture()"))
-    goto error;
-
   for (i = 0; i < novls; ++i) {
     vo_overlay_t *ovl = this->overlays[i];
     uint32_t *bitmap = NULL;
@@ -2479,34 +2487,25 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     }
 
     /* Blit overlay to destination */
-    void *p_base = NULL;
+    uint32_t pitch = ovl->width * sizeof(uint32_t);
+    uint32_t *copy_dst = this->overlay_bitmap;
+    uint32_t *copy_src = NULL;
+    uint32_t height = 0;
 
-    vaStatus = vaMapBuffer(va_context->va_display, va_context->va_subpic_image.buf, &p_base);
-    if(vaapi_check_status(frame_gen->driver, vaStatus, "vaMapBuffer()")) {
-
-      uint32_t pitch = ovl->width * sizeof(uint32_t);
-      uint32_t *copy_dst = (uint32_t*) p_base;
-      uint32_t *copy_src = NULL;
-      uint32_t height = 0;
-
-      copy_src = bitmap;
+    copy_src = bitmap;
   
-      copy_dst += ovl->y * this->overlay_bitmap_width;
+    copy_dst += ovl->y * this->overlay_bitmap_width;
 
-      lprintf("overlay_bitmap_width %d overlay_bitmap_height %d  ovl->x %d ovl->y %d ovl->width %d ovl->height %d width %d height %d\n",
-        this->overlay_bitmap_width, this->overlay_bitmap_height, ovl->x, ovl->y, ovl->width, ovl->height, this->overlay_bitmap_width, this->overlay_bitmap_height);
+    lprintf("overlay_bitmap_width %d overlay_bitmap_height %d  ovl->x %d ovl->y %d ovl->width %d ovl->height %d width %d height %d\n",
+      this->overlay_bitmap_width, this->overlay_bitmap_height, ovl->x, ovl->y, ovl->width, ovl->height, this->overlay_bitmap_width, this->overlay_bitmap_height);
 
-      for(height = 0; height < ovl->height; height++) {
-        if((height + ovl->y) >= this->overlay_bitmap_height)
-          break;
+    for(height = 0; height < ovl->height; height++) {
+      if((height + ovl->y) >= this->overlay_bitmap_height)
+        break;
 
-        xine_fast_memcpy(copy_dst + ovl->x, copy_src, pitch);
-        copy_dst += this->overlay_bitmap_width;
-        copy_src += ovl->width;
-      }
-
-      vaStatus = vaUnmapBuffer(va_context->va_display, va_context->va_subpic_image.buf);
-      vaapi_check_status(frame_gen->driver, vaStatus, "vaUnmapBuffer()");
+      xine_fast_memcpy(copy_dst + ovl->x, copy_src, pitch);
+      copy_dst += this->overlay_bitmap_width;
+      copy_src += ovl->width;
     }
 
     if (ovl->rle) {
@@ -2520,10 +2519,6 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       pthread_mutex_unlock(&ovl->argb_layer->mutex);
 
   }
-
-error:
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
 
   this->ovl_changed = 0;
   this->has_overlay = (first_scaled != NULL) | (first_unscaled != NULL);
@@ -2969,7 +2964,7 @@ static void nv12_to_yv12(const uint8_t *y_src,  int y_src_pitch,
 
   int height  = (src_height > dst_height) ? dst_height : src_height;
   int width   = (src_width > dst_width) ? dst_width : src_width;
-  int uv_src_pitch_half = uv_src_pitch / 2;
+  //int uv_src_pitch_half = uv_src_pitch / 2;
 
   for(y = 0; y < height; y++) {
     xine_fast_memcpy(y_dst, y_src, width);
@@ -3014,7 +3009,7 @@ static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch,
 
   int height  = (src_height > dst_height) ? dst_height : src_height;
   int width   = (src_width > dst_width) ? dst_width : src_width;
-  int uv_dst_pitch_half = uv_dst_pitch / 2;
+  //int uv_dst_pitch_half = uv_dst_pitch / 2;
 
   for(y = 0; y < height; y++) {
     xine_fast_memcpy(y_dst, y_src, width);
@@ -3246,12 +3241,14 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
 /* Used in vaapi_display_frame to determine how long displaying a frame takes
    - if slower than 60fps, print a message
 */
+/*
 static double timeOfDay()
 {
     struct timeval t;
     gettimeofday( &t, NULL );
     return ((double)t.tv_sec) + (((double)t.tv_usec)/1000000.0);
 }
+*/
 
 static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   vaapi_driver_t     *this          = (vaapi_driver_t *) this_gen;
