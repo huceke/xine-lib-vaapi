@@ -131,6 +131,21 @@
 
 #define RECT_IS_EQ(a, b) ((a).x1 == (b).x1 && (a).y1 == (b).y1 && (a).x2 == (b).x2 && (a).y2 == (b).y2)
 
+static const char *const scaling_level_enum_names[] = {
+  "default",  /* VA_FILTER_SCALING_DEFAULT       */
+  "fast",     /* VA_FILTER_SCALING_FAST          */
+  "hq",       /* VA_FILTER_SCALING_HQ            */
+  "nla",      /* VA_FILTER_SCALING_NL_ANAMORPHIC */
+  NULL
+};
+
+static const int scaling_level_enum_values[] = {
+  VA_FILTER_SCALING_DEFAULT,
+  VA_FILTER_SCALING_FAST,
+  VA_FILTER_SCALING_HQ,
+  VA_FILTER_SCALING_NL_ANAMORPHIC
+};
+
 typedef struct vaapi_driver_s vaapi_driver_t;
 
 typedef struct {
@@ -226,9 +241,12 @@ struct vaapi_driver_s {
 
   unsigned int        init_opengl_render;
   unsigned int        guarded_render;
+  unsigned int        scaling_level_enum;
+  unsigned int        scaling_level;
   va_property_t       props[VO_NUM_PROPERTIES];
   vaapi_frame_t       *cur_frame;
   unsigned int        swap_uv_planes;
+  unsigned int        disposed;
 };
 
 ff_vaapi_surface_t  *va_render_surfaces   = NULL;
@@ -803,8 +821,6 @@ static void destroy_glx(vo_driver_t *this_gen)
   //if (gl_finish)
   //  glFinish();
 
-  XSync(this->display, False);
-
   if(va_context->gl_surface) {
     VAStatus vaStatus = vaDestroySurfaceGLX(va_context->va_display, va_context->gl_surface);
     vaapi_check_status(this_gen, vaStatus, "vaDestroySurfaceGLX()");
@@ -1347,7 +1363,6 @@ static void vaapi_close(vo_driver_t *this_gen) {
     return;
 
   vaapi_ovl_associate(this_gen, 0, 0);
-
   destroy_glx((vo_driver_t *)this);
 
   vaapi_destroy_subpicture(this_gen);
@@ -1975,6 +1990,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender      : %d\n", this->opengl_render);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : glxrender tfp  : %d\n", this->opengl_use_tfp);
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : is_bound       : %d\n", va_context->is_bound);
+  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : scaling level  : name %s value 0x%08x\n", scaling_level_enum_names[this->scaling_level_enum], this->scaling_level);
 
   this->init_opengl_render = 1;
 
@@ -2531,7 +2547,7 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 static void vaapi_resize_glx_window (vo_driver_t *this_gen, int width, int height) {
   vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
 
-  if(this->opengl_render && this->valid_opengl_context) {
+  if(this->valid_opengl_context) {
     glViewport(0, 0, width, height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -2547,7 +2563,14 @@ static void vaapi_resize_glx_window (vo_driver_t *this_gen, int width, int heigh
 }
 
 static int vaapi_redraw_needed (vo_driver_t *this_gen) {
-  vaapi_driver_t  *this = (vaapi_driver_t *) this_gen;
+  vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
+  int                 ret = 0;
+
+  pthread_mutex_lock(&this->vaapi_lock);
+  XLockDisplay(this->display);
+
+  if(this->disposed)
+    goto out;
 
   _x_vo_scale_compute_ideal_size( &this->sc );
 
@@ -2557,12 +2580,14 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
     XMoveResizeWindow(this->display, this->window, 
                       0, 0, this->sc.gui_width, this->sc.gui_height);
 
-    vaapi_resize_glx_window(this_gen, this->sc.gui_width, this->sc.gui_height);
-
-    return 1;
+    ret = 1;
   }
 
-  return 0;
+out:
+  XUnlockDisplay(this->display);
+  pthread_mutex_unlock(&this->vaapi_lock);
+
+  return ret;
 }
 
 static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_frame_data_t *data)
@@ -3129,6 +3154,7 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
     //flags |= vaapi_get_colorspace_flags(this_gen);
 
     flags |= VA_CLEAR_DRAWABLE;
+    flags |= this->scaling_level;
 
     lprintf("Putsrfc srfc 0x%08X flags 0x%08x %dx%d -> %dx%d interlaced %d top_field_first %d\n", 
             va_surface_id, flags, width, height, 
@@ -3136,9 +3162,6 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
             interlaced_frame, top_field_first);
 
     if(this->opengl_render) {
-
-      if(!this->valid_opengl_context)
-        return VA_STATUS_ERROR_UNKNOWN;
 
       vaapi_x11_trap_errors();
 
@@ -3251,6 +3274,9 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
+  if(this->disposed)
+    goto out;
+
   lprintf("vaapi_display_frame %s frame->width %d frame->height %d va_context->sw_width %d va_context->sw_height %d valid_context %d\n",
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->width, frame->height, va_context->sw_width, va_context->sw_height, va_context->valid_context);
@@ -3268,7 +3294,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       vaapi_ovl_associate(this_gen, frame_gen->format, 0);
 
     if(!va_context->valid_context) {
-      printf("vaapi_display_frame init full context\n");
+      lprintf("vaapi_display_frame init full context\n");
       vaapi_init_internal(frame_gen->driver, SW_CONTEXT_INIT_FORMAT, frame->width, frame->height, 0);
     } else {
       lprintf("vaapi_display_frame init soft surfaces\n");
@@ -3294,16 +3320,37 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
+  if(this->disposed)
+    goto out;
+
   /* initialize opengl rendering */
-  if(this->init_opengl_render && this->opengl_render && va_context->valid_context) {
+  if(this->opengl_render && this->init_opengl_render && !this->valid_opengl_context &&  va_context->valid_context) {
     unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
     if(last_sub_img_fmt)
       vaapi_ovl_associate(this_gen, frame_gen->format, 0);
 
-    destroy_glx(this_gen);
+    printf("vaapi_display_frame: init opengl context\n");
+    //destroy_glx(this_gen);
 
     vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
+
+    //vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
+
+    //if(last_sub_img_fmt)
+    //  vaapi_ovl_associate(this_gen, frame_gen->format, 1);
+
+    //this->sc.force_redraw = 1;
+    //this->init_opengl_render = 0;
+  }
+
+  if(this->opengl_render && this->init_opengl_render) {
+    unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
+
+    if(last_sub_img_fmt)
+      vaapi_ovl_associate(this_gen, frame_gen->format, 0);
+
+    printf("vaapi_display_frame: resize opengl context\n");
 
     vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
 
@@ -3398,6 +3445,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   //end_time = timeOfDay();
 
+out:
   if(this->guarded_render) {
     ff_vaapi_surface_t *va_surface = &va_render_surfaces[accel->index];
 
@@ -3540,6 +3588,8 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 				 int data_type, void *data) {
   vaapi_driver_t     *this       = (vaapi_driver_t *) this_gen;
 
+  lprintf("vaapi_gui_data_exchange %d\n", data_type);
+
   switch (data_type) {
 #ifndef XINE_DISABLE_DEPRECATED_FEATURES
   case XINE_GUI_SEND_COMPLETION_EVENT:
@@ -3566,8 +3616,6 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     pthread_mutex_lock(&this->vaapi_lock);
     XLockDisplay( this->display );
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
-
-    destroy_glx(this_gen);
 
     this->drawable = (Drawable) data;
 
@@ -3610,6 +3658,8 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
+  this->disposed = 1;
+
   this->ovl_yuv2rgb->dispose(this->ovl_yuv2rgb);
   this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
 
@@ -3628,12 +3678,12 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
   if(va_soft_images)
     free(va_soft_images);
 
-  pthread_mutex_destroy(&this->vaapi_lock);
-  XUnlockDisplay(this->display);
 
   XDestroyWindow(this->display, this->window);
+  XUnlockDisplay(this->display);
 
   pthread_mutex_unlock(&this->vaapi_lock);
+  pthread_mutex_destroy(&this->vaapi_lock);
 
   free (this);
 }
@@ -3680,6 +3730,13 @@ static void vaapi_guarded_render( void *this_gen, xine_cfg_entry_t *entry )
   vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
 
   this->guarded_render = entry->num_value;
+}
+
+static void vaapi_scaling_level( void *this_gen, xine_cfg_entry_t *entry )
+{
+  vaapi_driver_t  *this  = (vaapi_driver_t *) this_gen;
+
+  this->scaling_level = entry->num_value;
 }
 
 static void vaapi_swap_uv_planes(void *this_gen, xine_cfg_entry_t *entry) 
@@ -3847,11 +3904,20 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
         _("vaapi: set vaapi_guarded_render to 0 ( yes ) 1 ( no )"),
         10, vaapi_guarded_render, this );
 
+  this->scaling_level_enum = config->register_enum(config, "video.output.vaapi_scaling_level", 0,
+    (char **)scaling_level_enum_names,
+        _("vaapi: set scaling level to : default (default) fast (fast) hq (HQ) nla (anamorphic)"),
+        _("vaapi: set scaling level to : default (default) fast (fast) hq (HQ) nla (anamorphic)"),
+    10, vaapi_scaling_level, this);
+
+  this->scaling_level = scaling_level_enum_values[this->scaling_level_enum];
+
   this->swap_uv_planes = config->register_bool( config, "video.output.vaapi_swap_uv_planes", 0,
     _("vaapi: swap UV planes."),
     _("vaapi: this is a workaround for buggy drivers ( intel IronLake ).\n"
       "There the UV planes are swapped.\n"),
     10, vaapi_swap_uv_planes, this);
+
 
   pthread_mutex_init(&this->vaapi_lock, NULL);
 
@@ -3883,6 +3949,7 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   vaapi_close((vo_driver_t *)this);
   this->va_context->valid_context = 0;
   this->va_context->driver        = (vo_driver_t *)this;
+  this->disposed                  = 0;
 
   pthread_mutex_unlock(&this->vaapi_lock);
 
