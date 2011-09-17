@@ -1097,7 +1097,7 @@ static int vaapi_glx_config_glx(vo_driver_t *this_gen, unsigned int width, unsig
     va_context->gl_surface = NULL;
   }
 
-  xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_glx_config_glx : GL setup done\n");
+  lprintf("vaapi_glx_config_glx : GL setup done\n");
 
   this->valid_opengl_context = 1;
   return 1;
