@@ -3879,9 +3879,9 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
         _("vaapi: set deinterlace to 0 ( none ), 1 ( top field ), 2 ( bob )."),
         10, vaapi_deinterlace_flag, this );
 
-  this->guarded_render = config->register_num( config, "video.output.vaapi_guarded_render", 0,
-        _("vaapi: set vaapi_guarded_render to 0 ( yes ) 1 ( no )"),
-        _("vaapi: set vaapi_guarded_render to 0 ( yes ) 1 ( no )"),
+  this->guarded_render = config->register_num( config, "video.output.vaapi_guarded_render", 1,
+        _("vaapi: set vaapi_guarded_render to 0 ( no ) 1 ( yes )"),
+        _("vaapi: set vaapi_guarded_render to 0 ( no ) 1 ( yes )"),
         10, vaapi_guarded_render, this );
 
   this->scaling_level_enum = config->register_enum(config, "video.output.vaapi_scaling_level", 0,
