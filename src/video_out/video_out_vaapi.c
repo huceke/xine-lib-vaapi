@@ -246,7 +246,6 @@ struct vaapi_driver_s {
   va_property_t       props[VO_NUM_PROPERTIES];
   vaapi_frame_t       *cur_frame;
   unsigned int        swap_uv_planes;
-  unsigned int        disposed;
 };
 
 ff_vaapi_surface_t  *va_render_surfaces   = NULL;
@@ -2566,12 +2565,6 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
   vaapi_driver_t      *this       = (vaapi_driver_t *) this_gen;
   int                 ret = 0;
 
-  pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
-
-  if(this->disposed)
-    goto out;
-
   _x_vo_scale_compute_ideal_size( &this->sc );
 
   if ( _x_vo_scale_redraw_needed( &this->sc ) ) {
@@ -2582,10 +2575,6 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
 
     ret = 1;
   }
-
-out:
-  XUnlockDisplay(this->display);
-  pthread_mutex_unlock(&this->vaapi_lock);
 
   return ret;
 }
@@ -3274,9 +3263,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  if(this->disposed)
-    goto out;
-
   lprintf("vaapi_display_frame %s frame->width %d frame->height %d va_context->sw_width %d va_context->sw_height %d valid_context %d\n",
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
         frame->width, frame->height, va_context->sw_width, va_context->sw_height, va_context->valid_context);
@@ -3320,30 +3306,27 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  if(this->disposed)
-    goto out;
-
   /* initialize opengl rendering */
-  if(this->opengl_render && this->init_opengl_render && !this->valid_opengl_context &&  va_context->valid_context) {
+  if(this->opengl_render && this->init_opengl_render &&  va_context->valid_context) {
     unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
     if(last_sub_img_fmt)
       vaapi_ovl_associate(this_gen, frame_gen->format, 0);
 
-    printf("vaapi_display_frame: init opengl context\n");
-    //destroy_glx(this_gen);
+    destroy_glx(this_gen);
 
     vaapi_glx_config_glx(frame_gen->driver, va_context->width, va_context->height);
 
-    //vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
+    vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
 
-    //if(last_sub_img_fmt)
-    //  vaapi_ovl_associate(this_gen, frame_gen->format, 1);
+    if(last_sub_img_fmt)
+      vaapi_ovl_associate(this_gen, frame_gen->format, 1);
 
-    //this->sc.force_redraw = 1;
-    //this->init_opengl_render = 0;
+    this->sc.force_redraw = 1;
+    this->init_opengl_render = 0;
   }
 
+  /*
   if(this->opengl_render && this->init_opengl_render) {
     unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
@@ -3360,6 +3343,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     this->sc.force_redraw = 1;
     this->init_opengl_render = 0;
   }
+  */
 
   /*
   double start_time;
@@ -3445,7 +3429,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 
   //end_time = timeOfDay();
 
-out:
   if(this->guarded_render) {
     ff_vaapi_surface_t *va_surface = &va_render_surfaces[accel->index];
 
@@ -3658,8 +3641,6 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
-  this->disposed = 1;
-
   this->ovl_yuv2rgb->dispose(this->ovl_yuv2rgb);
   this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
 
@@ -3677,7 +3658,6 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
     free(va_render_surfaces);
   if(va_soft_images)
     free(va_soft_images);
-
 
   XDestroyWindow(this->display, this->window);
   XUnlockDisplay(this->display);
@@ -3949,7 +3929,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   vaapi_close((vo_driver_t *)this);
   this->va_context->valid_context = 0;
   this->va_context->driver        = (vo_driver_t *)this;
-  this->disposed                  = 0;
 
   pthread_mutex_unlock(&this->vaapi_lock);
 
