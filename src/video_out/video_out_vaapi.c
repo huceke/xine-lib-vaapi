@@ -244,7 +244,6 @@ struct vaapi_driver_s {
   unsigned int        scaling_level_enum;
   unsigned int        scaling_level;
   va_property_t       props[VO_NUM_PROPERTIES];
-  vaapi_frame_t       *cur_frame;
   unsigned int        swap_uv_planes;
 };
 
@@ -2021,7 +2020,7 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
 
   unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
 
-  if(last_sub_img_fmt && this->cur_frame)
+  if(last_sub_img_fmt)
     vaapi_ovl_associate(this_gen, frame_gen->format, 0);
 
   if(!this->guarded_render) {
@@ -2036,8 +2035,8 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
     pthread_mutex_unlock(&this->vaapi_lock);
   }
 
-  if(last_sub_img_fmt && this->cur_frame)
-    vaapi_ovl_associate(this_gen, frame_gen->format, 1);
+  if(last_sub_img_fmt)
+    vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
 
   return vaStatus;
 }
@@ -3033,6 +3032,19 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
     return vaStatus;
 
 
+  uint8_t *dst[3] = { NULL, };
+  uint32_t  pitches[3];
+
+  if(this->swap_uv_planes) {
+    dst[0] = (uint8_t *)p_base + va_image->offsets[0]; pitches[0] = va_image->pitches[0];
+    dst[1] = (uint8_t *)p_base + va_image->offsets[1]; pitches[1] = va_image->pitches[1];
+    dst[2] = (uint8_t *)p_base + va_image->offsets[2]; pitches[2] = va_image->pitches[2];
+  } else {
+    dst[0] = (uint8_t *)p_base + va_image->offsets[0]; pitches[0] = va_image->pitches[0];
+    dst[1] = (uint8_t *)p_base + va_image->offsets[2]; pitches[1] = va_image->pitches[1];
+    dst[2] = (uint8_t *)p_base + va_image->offsets[1]; pitches[2] = va_image->pitches[2];
+  }
+
   /* Copy xine frames into VAAPI images */
   if(frame->format == XINE_IMGFMT_YV12) {
 
@@ -3040,27 +3052,16 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
         va_image->format.fourcc == VA_FOURCC( 'I', '4', '2', '0' ) ) {
       lprintf("vaapi_software_render_frame yv12 -> yv12 convert\n");
 
-      uint8_t *dst[3] = { NULL, };
-
-      if(this->swap_uv_planes) {
-        dst[0] = (uint8_t *)p_base + va_image->offsets[0];
-        dst[1] = (uint8_t *)p_base + va_image->offsets[1];
-        dst[2] = (uint8_t *)p_base + va_image->offsets[2];
-      } else {
-        dst[0] = (uint8_t *)p_base + va_image->offsets[0];
-        dst[1] = (uint8_t *)p_base + va_image->offsets[2];
-        dst[2] = (uint8_t *)p_base + va_image->offsets[1];
-      }
       yv12_to_yv12(
               /* Y */
               frame_gen->base[0], frame_gen->pitches[0],
-              dst[0], va_image->pitches[0],
+              dst[0], pitches[0],
               /* U */
               frame_gen->base[1], frame_gen->pitches[1],
-              dst[1], va_image->pitches[1],
+              dst[1], pitches[1],
               /* V */
               frame_gen->base[2], frame_gen->pitches[2],
-              dst[2], va_image->pitches[2],
+              dst[2], pitches[2],
               /* width x height */
               frame_gen->width, frame_gen->height);
 
@@ -3084,9 +3085,9 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
       lprintf("vaapi_software_render_frame yuy2 -> yv12 convert\n");
 
       yuy2_to_yv12(frame_gen->base[0], frame_gen->pitches[0],
-                  (uint8_t*)p_base + va_image->offsets[0], va_image->pitches[0],
-                  (uint8_t*)p_base + va_image->offsets[1], va_image->pitches[1],
-                  (uint8_t*)p_base + va_image->offsets[2], va_image->pitches[2],
+                  dst[0], pitches[0],
+                  dst[1], pitches[1],
+                  dst[2], pitches[2],
                   frame_gen->width, frame_gen->height);
 
     } else if (va_image->format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' )) {
@@ -3104,6 +3105,7 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
                         0, 0, va_image->width, va_image->height,
                         0, 0, va_image->width, va_image->height);
   }
+
   if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
     return vaStatus;
 
@@ -3258,8 +3260,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   this->sc.crop_top         = frame->vo_frame.crop_top;
   this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
 
-  this->cur_frame = frame;
-
   pthread_mutex_lock(&this->vaapi_lock);
   XLockDisplay(this->display);
 
@@ -3291,7 +3291,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     this->init_opengl_render = 1;
 
     if(last_sub_img_fmt)
-      vaapi_ovl_associate(this_gen, frame_gen->format, 1);
+      vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
   }
 
   XUnlockDisplay(this->display);
@@ -3320,30 +3320,11 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
 
     if(last_sub_img_fmt)
-      vaapi_ovl_associate(this_gen, frame_gen->format, 1);
+      vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
 
     this->sc.force_redraw = 1;
     this->init_opengl_render = 0;
   }
-
-  /*
-  if(this->opengl_render && this->init_opengl_render) {
-    unsigned int last_sub_img_fmt = va_context->last_sub_image_fmt;
-
-    if(last_sub_img_fmt)
-      vaapi_ovl_associate(this_gen, frame_gen->format, 0);
-
-    printf("vaapi_display_frame: resize opengl context\n");
-
-    vaapi_resize_glx_window(frame_gen->driver, this->sc.gui_width, this->sc.gui_height);
-
-    if(last_sub_img_fmt)
-      vaapi_ovl_associate(this_gen, frame_gen->format, 1);
-
-    this->sc.force_redraw = 1;
-    this->init_opengl_render = 0;
-  }
-  */
 
   /*
   double start_time;
@@ -3918,7 +3899,6 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->props[VO_PROP_ZOOM_X].value          = 100;
   this->props[VO_PROP_ZOOM_Y].value          = 100;
 
-  this->cur_frame                            = NULL;
   this->va_context->last_sub_surface_id      = VA_INVALID_SURFACE;
   this->va_context->last_sub_image_fmt       = 0;
 
