@@ -1021,7 +1021,7 @@ static int vaapi_glx_config_glx(vo_driver_t *this_gen, unsigned int width, unsig
 
   void *(*getProcAddress)(const GLubyte *);
   const char *(*glXExtStr)(Display *, int);
-  char *glxstr = strdup("");
+  char *glxstr = strdup(" ");
 
   getProcAddress = vaapi_getdladdr("glXGetProcAddress");
   if (!getProcAddress)
