@@ -1065,7 +1065,6 @@ static void ff_init_mpeg12_mode(ff_video_decoder_t *this)
   if ( this->mpeg_parser == NULL ) {
     this->mpeg_parser = calloc(1, sizeof(mpeg_parser_t));
     mpeg_parser_init(this->mpeg_parser);
-    this->decoder_init_mode = 0;
   }
 }
 
