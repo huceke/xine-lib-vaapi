@@ -421,8 +421,6 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       pthread_mutex_lock(&ffmpeg_lock);
       this->codec = avcodec_find_decoder(ff_video_lookup[i].id);
       pthread_mutex_unlock(&ffmpeg_lock);
-      xprintf (this->stream->xine, XINE_VERBOSITY_LOG, "ffmpeg_video_dec: video codec %s\n", 
-                            ff_video_lookup[i].name);
       _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC,
                             ff_video_lookup[i].name);
       break;
@@ -1301,15 +1299,6 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
 
   lprintf("handle_mpeg12_buffer\n");
 
-  /*
-  if(this->mpeg_parser->buffer_size == 0) {
-    this->av_frame->reordered_opaque = ff_tag_pts(this, this->pts);
-    if (this->context)
-      this->context->reordered_opaque = ff_tag_pts(this, this->pts);
-    this->pts = 0;
-  }
-  */
-
   if (!this->is_mpeg12) {
     /* initialize mpeg parser */
     ff_init_mpeg12_mode(this);
@@ -1393,11 +1382,6 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     } else {
       size -= len;
       offset += len;
-      /*
-      this->av_frame->reordered_opaque = ff_tag_pts(this, this->pts);
-      this->context->reordered_opaque = ff_tag_pts(this, this->pts);
-      this->pts = 0;
-      */
     }
 
     if(got_picture && this->class->enable_vaapi) {
@@ -1471,19 +1455,13 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
       img->top_field_first   = this->av_frame->top_field_first;
       img->bad_frame = 0;
 
+      img->pts  = this->pts;
+      this->pts = 0;
+
       if (av_framedisp->repeat_pict)
         img->duration = this->video_step * 3 / 2;
       else
         img->duration = this->video_step;
-
-      img->pts  = this->pts;
-      this->pts = 0;
-
-      /*
-      img->pts  = ff_untag_pts(this, this->av_frame->reordered_opaque);
-      ff_check_pts_tagging(this, this->av_frame->reordered_opaque);
-      this->av_frame->reordered_opaque = 0;
-      */
 
       img->crop_right  = this->crop_right;
       img->crop_bottom = this->crop_bottom;
@@ -1517,10 +1495,6 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
                                                   this->aspect_ratio,
                                                   this->output_format,
                                                   VO_BOTH_FIELDS|this->frame_flags);
-        /*
-        img->pts       = ff_untag_pts(this, this->av_frame->reordered_opaque);
-        this->av_frame->reordered_opaque = 0;
-        */
         img->pts       = 0;
         img->duration  = this->video_step;
         img->bad_frame = 1;
