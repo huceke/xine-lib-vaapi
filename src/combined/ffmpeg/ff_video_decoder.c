@@ -1301,7 +1301,6 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
 
   lprintf("handle_mpeg12_buffer\n");
 
-<<<<<<< HEAD
   /*
   if(this->mpeg_parser->buffer_size == 0) {
     this->av_frame->reordered_opaque = ff_tag_pts(this, this->pts);
@@ -1310,12 +1309,11 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     this->pts = 0;
   }
   */
-=======
+
   if (!this->is_mpeg12) {
     /* initialize mpeg parser */
     ff_init_mpeg12_mode(this);
   }
->>>>>>> 19ec05a27c3c269ab0a969fd2e7430381a362e48
 
   while ((size > 0) || (flush == 1)) {
 
