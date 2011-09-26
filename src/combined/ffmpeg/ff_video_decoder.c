@@ -2086,6 +2086,9 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
       this->class->enable_vaapi = 0;
       xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled disabled by driver.\n"));
     }
+  } else {
+    this->class->enable_vaapi = 0;
+    xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled disabled by driver.\n"));
   }
 
   xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: vaapi_mpeg_softdec %d\n"),
