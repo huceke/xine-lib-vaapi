@@ -1194,6 +1194,14 @@ static const audio_db_t audio_db[] = {
   BUF_AUDIO_EAC3,
   "E-AC-3"
 },
+{
+  {
+    ME_FOURCC('M', 'P', '4', 'L'),
+    0
+  },
+  BUF_AUDIO_AAC_LATM,
+  "AAC LATM"
+},
 { { 0 }, 0, "last entry" }
 };
 

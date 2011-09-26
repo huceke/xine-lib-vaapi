@@ -524,6 +524,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       return;
     }
   }
+
   pthread_mutex_unlock(&ffmpeg_lock);
 
   lprintf("lavc decoder opened\n");
@@ -1017,6 +1018,59 @@ static void ff_check_bufsize (ff_video_decoder_t *this, int size) {
   }
 }
 
+static int ff_vc1_find_header(ff_video_decoder_t *this, buf_element_t *buf)
+{
+  uint8_t *p = buf->content;
+
+  if (!p[0] && !p[1] && p[2] == 1 && p[3] == 0x0f) {
+    int i;
+
+    this->context->extradata = calloc(1, buf->size);
+    this->context->extradata_size = 0;
+
+    for (i = 0; i < buf->size && i < 128; i++) {
+      if (!p[i] && !p[i+1] && p[i+2]) {
+	lprintf("00 00 01 %02x at %d\n", p[i+3], i);
+	if (p[i+3] != 0x0e && p[i+3] != 0x0f)
+	  break;
+      }
+      this->context->extradata[i] = p[i];
+      this->context->extradata_size++;
+    }
+
+    lprintf("ff_video_decoder: found VC1 sequence header\n");
+    return 1;
+  }
+
+  xprintf(this->stream->xine, XINE_VERBOSITY_DEBUG,
+	  "ffmpeg_video_dec: VC1 extradata missing !\n");
+  return 0;
+}
+
+static int ff_check_extradata(ff_video_decoder_t *this, unsigned int codec_type, buf_element_t *buf)
+{
+  if (this->context && this->context->extradata)
+    return 1;
+
+  switch (codec_type) {
+  case BUF_VIDEO_VC1:
+    return ff_vc1_find_header(this, buf);
+  default:;
+  }
+
+  return 1;
+}
+
+static void ff_init_mpeg12_mode(ff_video_decoder_t *this)
+{
+  this->is_mpeg12 = 1;
+  if ( this->mpeg_parser == NULL ) {
+    this->mpeg_parser = calloc(1, sizeof(mpeg_parser_t));
+    mpeg_parser_init(this->mpeg_parser);
+    this->decoder_init_mode = 0;
+  }
+}
+
 static void ff_handle_preview_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
   int codec_type;
 
@@ -1024,14 +1078,14 @@ static void ff_handle_preview_buffer (ff_video_decoder_t *this, buf_element_t *b
 
   codec_type = buf->type & 0xFFFF0000;
   if (codec_type == BUF_VIDEO_MPEG) {
-    this->is_mpeg12 = 1;
-    if ( this->mpeg_parser == NULL ) {
-      this->mpeg_parser = calloc(1, sizeof(mpeg_parser_t));
-      mpeg_parser_init(this->mpeg_parser);
-    }
+    ff_init_mpeg12_mode(this);
   }
 
   if (this->decoder_init_mode && !this->is_mpeg12) {
+
+    if (!ff_check_extradata(this, codec_type, buf))
+      return;
+
     init_video_codec(this, codec_type);
     init_postprocess(this);
     this->decoder_init_mode = 0;
@@ -1247,6 +1301,7 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
 
   lprintf("handle_mpeg12_buffer\n");
 
+<<<<<<< HEAD
   /*
   if(this->mpeg_parser->buffer_size == 0) {
     this->av_frame->reordered_opaque = ff_tag_pts(this, this->pts);
@@ -1255,6 +1310,12 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     this->pts = 0;
   }
   */
+=======
+  if (!this->is_mpeg12) {
+    /* initialize mpeg parser */
+    ff_init_mpeg12_mode(this);
+  }
+>>>>>>> 19ec05a27c3c269ab0a969fd2e7430381a362e48
 
   while ((size > 0) || (flush == 1)) {
 
@@ -1478,49 +1539,6 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
   }
 }
 
-static int ff_vc1_find_header(ff_video_decoder_t *this, buf_element_t *buf)
-{
-  uint8_t *p = buf->content;
-
-  if (!p[0] && !p[1] && p[2] == 1 && p[3] == 0x0f) {
-    int i;
-
-    this->context->extradata = calloc(1, buf->size);
-    this->context->extradata_size = 0;
-
-    for (i = 0; i < buf->size && i < 128; i++) {
-      if (!p[i] && !p[i+1] && p[i+2]) {
-	lprintf("00 00 01 %02x at %d\n", p[i+3], i);
-	if (p[i+3] != 0x0e && p[i+3] != 0x0f)
-	  break;
-      }
-      this->context->extradata[i] = p[i];
-      this->context->extradata_size++;
-    }
-
-    lprintf("ff_video_decoder: found VC1 sequence header\n");
-    return 1;
-  }
-
-  xprintf(this->stream->xine, XINE_VERBOSITY_DEBUG,
-	  "ffmpeg_video_dec: VC1 extradata missing !\n");
-  return 0;
-}
-
-static int ff_check_extradata(ff_video_decoder_t *this, unsigned int codec_type, buf_element_t *buf)
-{
-  if (this->context && this->context->extradata)
-    return 1;
-
-  switch (codec_type) {
-  case BUF_VIDEO_VC1:
-    return ff_vc1_find_header(this, buf);
-  default:;
-  }
-
-  return 1;
-}
-
 static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
   uint8_t *chunk_buf = this->buf;
   AVRational avr00 = {0, 1};
@@ -1529,7 +1547,7 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
 
   if (!this->decoder_ok) {
     if (this->decoder_init_mode) {
-      int codec_type = buf->type & 0xFFFF0000;
+      int codec_type = buf->type & (BUF_MAJOR_MASK | BUF_DECODER_MASK);
 
       if (!ff_check_extradata(this, codec_type, buf))
 	return;
@@ -1875,7 +1893,7 @@ static void ff_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
       if (buf->pts)
 	this->pts = buf->pts;
 
-      if (this->is_mpeg12) {
+      if ((buf->type & 0xFFFF0000) == BUF_VIDEO_MPEG) {
 	ff_handle_mpeg12_buffer(this, buf);
       } else {
 	ff_handle_buffer(this, buf);
