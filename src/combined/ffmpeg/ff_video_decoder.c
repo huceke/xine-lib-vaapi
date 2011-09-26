@@ -2077,6 +2077,11 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
 
 
   if(this->class->enable_vaapi && (stream->video_driver->get_capabilities(stream->video_driver) & VO_CAP_VAAPI)) {
+    xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: vaapi_mpeg_softdec %d\n"),
+          this->class->vaapi_mpeg_softdec );
+    xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: vaapi_mpeg_softdec_deinterlace %d\n"),
+          this->class->vaapi_mpeg_softdec_deinterlace );
+
     this->accel_img  = stream->video_out->get_frame( stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
 
     if( this->accel_img ) {
@@ -2088,13 +2093,10 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
     }
   } else {
     this->class->enable_vaapi = 0;
+    this->class->vaapi_mpeg_softdec = 0;
+    this->class->vaapi_mpeg_softdec_deinterlace = 0;
     xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled disabled by driver.\n"));
   }
-
-  xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: vaapi_mpeg_softdec %d\n"),
-          this->class->vaapi_mpeg_softdec );
-  xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: vaapi_mpeg_softdec_deinterlace %d\n"),
-          this->class->vaapi_mpeg_softdec_deinterlace );
 
   return &this->video_decoder;
 }
