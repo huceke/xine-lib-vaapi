@@ -2076,10 +2076,10 @@ static video_decoder_t *ff_video_open_plugin (video_decoder_class_t *class_gen, 
   this->accel_img         = NULL;
 
 
-  if(this->class->enable_vaapi) {
+  if(this->class->enable_vaapi && (stream->video_driver->get_capabilities(stream->video_driver) & VO_CAP_VAAPI)) {
     this->accel_img  = stream->video_out->get_frame( stream->video_out, 1920, 1080, 1, XINE_IMGFMT_VAAPI, VO_BOTH_FIELDS );
 
-    if( this->accel_img && (stream->video_driver->get_capabilities(stream->video_driver) & VO_CAP_VAAPI) ) {
+    if( this->accel_img ) {
       this->accel = (vaapi_accel_t*)this->accel_img->accel_data;
       xprintf(this->class->xine, XINE_VERBOSITY_LOG, _("ffmpeg_video_dec: VAAPI Enabled in config.\n"));
     } else {
