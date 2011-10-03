@@ -832,7 +832,7 @@ static int vcd_plugin_open (input_plugin_t *this_gen) {
   char               *filename;
   int                 fd;
 
-  fd = open (cls->device, O_RDONLY|O_EXCL);
+  fd = open_cloexec(cls->device, O_RDONLY|O_EXCL);
   if (fd == -1) {
     return 0;
   }
@@ -966,7 +966,7 @@ static xine_mrl_t **vcd_class_get_dir (input_class_t *this_gen, const char *file
     return NULL;
 
 
-  fd = open (this->device, O_RDONLY|O_EXCL);
+  fd = open_cloexec(this->device, O_RDONLY|O_EXCL);
 
   if (fd == -1) {
     xprintf (this->xine, XINE_VERBOSITY_LOG,
@@ -1028,7 +1028,7 @@ static char ** vcd_class_get_autoplay_list (input_class_t *this_gen, int *num_fi
   int i, fd;
 
 
-  fd = open (this->device, O_RDONLY|O_EXCL);
+  fd = open_cloexec(this->device, O_RDONLY|O_EXCL);
 
   if (fd == -1) {
     xprintf (this->xine, XINE_VERBOSITY_LOG,

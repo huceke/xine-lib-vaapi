@@ -254,7 +254,7 @@ static int stdin_plugin_open (input_plugin_t *this_gen ) {
     char *filename;
 
     filename = (char *) &this->mrl[5];
-    this->fh = open (filename, FILE_FLAGS);
+    this->fh = open_cloexec(filename, FILE_FLAGS);
 
     lprintf("filename '%s'\n", filename);
 
