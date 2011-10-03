@@ -288,6 +288,7 @@ void (GLAPIENTRY *mpglXDestroyPixmap)(Display *, GLXPixmap);
 const GLubyte *(GLAPIENTRY *mpglGetString)(GLenum);
 void (GLAPIENTRY *mpglGenPrograms)(GLsizei, GLuint *);
 
+#ifdef LOG
 static const char *string_of_VAImageFormat(VAImageFormat *imgfmt)
 {
   static char str[5];
@@ -298,6 +299,7 @@ static const char *string_of_VAImageFormat(VAImageFormat *imgfmt)
   str[4] = '\0';
   return str;
 }
+#endif
 
 static int vaapi_check_status(vo_driver_t *this_gen, VAStatus vaStatus, const char *msg)
 {
@@ -2571,6 +2573,8 @@ static int vaapi_redraw_needed (vo_driver_t *this_gen) {
 
     XMoveResizeWindow(this->display, this->window, 
                       0, 0, this->sc.gui_width, this->sc.gui_height);
+
+    vaapi_resize_glx_window(this_gen, this->sc.gui_width, this->sc.gui_height);
 
     ret = 1;
   }
