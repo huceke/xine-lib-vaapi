@@ -67,6 +67,16 @@ static int _x_io_tcp_connect_ipv4(xine_stream_t *stream, const char *host, int p
   }
 
 #ifndef WIN32
+  if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
+    xprintf(stream->xine, XINE_VERBOSITY_DEBUG, "Failed to make socket uninheritable (%s)\n", strerror(errno));
+  }
+#else
+  if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
+    xprintf(stream->xine, XINE_VERBOSITY_DEBUG, "Failed to make socket uninheritable\n");
+  }
+#endif
+
+#ifndef WIN32
   if (fcntl (s, F_SETFL, fcntl (s, F_GETFL) | O_NONBLOCK) == -1) {
     _x_message(stream, XINE_MSG_CONNECTION_REFUSED, "can't put socket in non-blocking mode", strerror(errno), NULL);
     return -1;
@@ -151,6 +161,16 @@ int _x_io_tcp_connect(xine_stream_t *stream, const char *host, int port) {
 	  tmpaddr = tmpaddr->ai_next;
 	  continue;
       }
+
+#ifndef WIN32
+      if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
+          xprintf(stream->xine, XINE_VERBOSITY_DEBUG, "Failed to make socket uninheritable (%s)\n", strerror(errno));
+      }
+#else
+      if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
+          xprintf(stream->xine, XINE_VERBOSITY_DEBUG, "Failed to make socket uninheritable\n");
+      }
+#endif
 
       /*
        * Enable the non-blocking features only when there's no other

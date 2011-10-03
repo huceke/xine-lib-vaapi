@@ -181,6 +181,18 @@ void xine_usec_sleep(unsigned usec) XINE_PROTECTED;
  */
 char *xine_strcat_realloc (char **dest, char *append) XINE_PROTECTED;
 
+/**
+ * opens a file, ensuring that the descriptor will be closed
+ * automatically after a fork/execute.
+ */
+int open_cloexec(const char *name, int flags) XINE_PROTECTED;
+
+/**
+ * creates a file, ensuring that the descriptor will be closed
+ * automatically after a fork/execute.
+ */
+int create_cloexec(const char *name, int flags, mode_t mode) XINE_PROTECTED;
+
 /*
  * Color Conversion Utility Functions
  * The following data structures and functions facilitate the conversion

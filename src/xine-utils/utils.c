@@ -38,6 +38,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #if HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -54,6 +55,10 @@
 #if defined(__CYGWIN__) || defined(WIN32)
 #include <ctype.h>
 #include <windows.h>
+#endif
+
+#ifndef O_CLOEXEC
+#  define O_CLOEXEC  0
 #endif
 
 typedef struct {
@@ -717,3 +722,37 @@ char *xine_strcat_realloc (char **dest, char *append)
     strcat (*dest = newstr, append);
   return newstr;
 }
+
+
+static int set_close_on_execute(int fd)
+{
+#ifndef WIN32
+  return fcntl(fd, F_SETFD, FD_CLOEXEC);
+#else
+  return SetHandleInformation((HANDLE)_get_osfhandle(fd), HANDLE_FLAG_INHERIT, 0);
+#endif
+}
+
+
+int open_cloexec(const char *name, int flags)
+{
+  int fd = open(name, (flags | O_CLOEXEC));
+
+  if (fd >= 0) {
+    set_close_on_execute(fd);
+  }
+
+  return fd;
+}
+
+int create_cloexec(const char *name, int flags, mode_t mode)
+{
+  int fd = open(name, (flags | O_CREAT | O_CLOEXEC), mode);
+
+  if (fd >= 0) {
+    set_close_on_execute(fd);
+  }
+
+  return fd;
+}
+
