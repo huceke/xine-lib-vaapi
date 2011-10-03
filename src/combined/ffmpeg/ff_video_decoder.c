@@ -510,17 +510,6 @@ static void init_postprocess (ff_video_decoder_t *this) {
 
 static int ff_handle_mpeg_sequence(ff_video_decoder_t *this, mpeg_parser_t *parser) {
 
-  /*
-   * init codec
-   */
-  if (this->decoder_init_mode) {
-    _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC,
-                          "mpeg-1 (ffmpeg)");
-
-    init_video_codec (this, BUF_VIDEO_MPEG);
-    this->decoder_init_mode = 0;
-  }
-
   /* frame format change */
   if ((parser->width != this->bih.biWidth) ||
       (parser->height != this->bih.biHeight) ||
@@ -897,10 +886,18 @@ static int ff_check_extradata(ff_video_decoder_t *this, unsigned int codec_type,
 static void ff_init_mpeg12_mode(ff_video_decoder_t *this)
 {
   this->is_mpeg12 = 1;
+
+  if (this->decoder_init_mode) {
+    _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC,
+                          "mpeg-1 (ffmpeg)");
+
+    init_video_codec (this, BUF_VIDEO_MPEG);
+    this->decoder_init_mode = 0;
+  }
+
   if ( this->mpeg_parser == NULL ) {
     this->mpeg_parser = calloc(1, sizeof(mpeg_parser_t));
     mpeg_parser_init(this->mpeg_parser);
-    this->decoder_init_mode = 0;
   }
 }
 

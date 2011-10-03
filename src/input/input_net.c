@@ -122,6 +122,18 @@ static int host_connect_attempt_ipv4(struct in_addr ia, int port, xine_t *xine) 
     return -1;
   }
 
+#ifndef WIN32
+  if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
+    xine_log(xine, XINE_LOG_MSG,
+             _("input_net: Failed to make socket uninheritable (%s)\n"),
+             strerror(errno));
+  }
+#else
+  if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
+    xine_log(xine, XINE_LOG_MSG, "Failed to make socket uninheritable\n");
+  }
+#endif
+
   sin.sin_family = AF_INET;
   sin.sin_addr   = ia;
   sin.sin_port   = htons(port);
@@ -151,6 +163,18 @@ static int host_connect_attempt(int family, struct sockaddr* sin, int addrlen, x
              _("input_net: socket(): %s\n"), strerror(errno));
     return -1;
   }
+
+#ifndef WIN32
+  if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
+    xine_log(xine, XINE_LOG_MSG,
+             _("input_net: Failed to make socket uninheritable (%s)\n"),
+             strerror(errno));
+  }
+#else
+  if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
+    xine_log(xine, XINE_LOG_MSG, "Failed to make socket uninheritable\n");
+  }
+#endif
 
 #ifndef WIN32
   if (connect(s, sin, addrlen)==-1 && errno != EINPROGRESS)

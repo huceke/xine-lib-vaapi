@@ -46,6 +46,10 @@
 
 #include <xine/xineutils.h>
 
+#ifndef O_CLOEXEC
+#  define O_CLOEXEC  0
+#endif
+
 #if defined(__linux__)
 
 #include <dlfcn.h>
@@ -168,7 +172,7 @@ static xine_health_check_t* _x_health_check_cdrom (xine_health_check_t* hc) {
     return hc;
   }
 
-  if ( (fd = open(hc->cdrom_dev, O_RDWR)) < 0) {
+  if ( (fd = open(hc->cdrom_dev, O_RDWR | O_CLOEXEC)) < 0) {
     switch (errno) {
     case EACCES:
       set_hc_result (hc, XINE_HEALTH_CHECK_FAIL, "FAILED - %s permissions are not sufficient\n.", hc->cdrom_dev);
@@ -204,7 +208,7 @@ static xine_health_check_t* _x_health_check_dvdrom(xine_health_check_t* hc) {
     return hc;
   }
 
-  if ( (fd = open(hc->dvd_dev, O_RDWR)) < 0) {
+  if ( (fd = open(hc->dvd_dev, O_RDWR | O_CLOEXEC)) < 0) {
     switch (errno) {
     case EACCES:
       set_hc_result (hc, XINE_HEALTH_CHECK_FAIL, "FAILED - %s permissions are not sufficient\n.", hc->dvd_dev);
@@ -247,7 +251,7 @@ static xine_health_check_t* _x_health_check_dma (xine_health_check_t* hc) {
     return hc;
   }
 
-  fd = open (hc->dvd_dev, O_RDONLY | O_NONBLOCK);
+  fd = open (hc->dvd_dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
   if (fd < 0) {
     set_hc_result(hc, XINE_HEALTH_CHECK_FAIL, "FAILED - Could not open %s.\n", hc->dvd_dev);
     return hc;

@@ -1784,11 +1784,14 @@ static unsigned char * demux_synchronise(demux_ts_t* this) {
 static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
 					       uint32_t adaptation_field_length) {
 
+#ifdef TS_LOG
   uint32_t    discontinuity_indicator=0;
   uint32_t    random_access_indicator=0;
   uint32_t    elementary_stream_priority_indicator=0;
+#endif
   uint32_t    PCR_flag=0;
-  int64_t     PCR=0;
+  int64_t     PCR=-1;
+#ifdef TS_LOG
   uint32_t    EPCR=0;
   uint32_t    OPCR_flag=0;
   uint32_t    OPCR=0;
@@ -1796,16 +1799,21 @@ static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
   uint32_t    slicing_point_flag=0;
   uint32_t    transport_private_data_flag=0;
   uint32_t    adaptation_field_extension_flag=0;
+#endif
   uint32_t    offset = 1;
 
+#ifdef TS_LOG
   discontinuity_indicator = ((data[0] >> 7) & 0x01);
   random_access_indicator = ((data[0] >> 6) & 0x01);
   elementary_stream_priority_indicator = ((data[0] >> 5) & 0x01);
+#endif
   PCR_flag = ((data[0] >> 4) & 0x01);
+#ifdef TS_LOG
   OPCR_flag = ((data[0] >> 3) & 0x01);
   slicing_point_flag = ((data[0] >> 2) & 0x01);
   transport_private_data_flag = ((data[0] >> 1) & 0x01);
   adaptation_field_extension_flag = (data[0] & 0x01);
+#endif
 
 #ifdef TS_LOG
   printf ("demux_ts: ADAPTATION FIELD length: %d (%x)\n",
@@ -1823,9 +1831,10 @@ static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
             elementary_stream_priority_indicator);
   }
 #endif
+
   if(PCR_flag) {
     if (adaptation_field_length < offset + 6)
-      return 0;
+      return -1;
 
     PCR  = (((int64_t) data[offset]) & 0xFF) << 25;
     PCR += (int64_t) ((data[offset+1] & 0xFF) << 17);
@@ -1833,13 +1842,15 @@ static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
     PCR += (int64_t) ((data[offset+3] & 0xFF) << 1);
     PCR += (int64_t) ((data[offset+4] & 0x80) >> 7);
 
-    EPCR = ((data[offset+4] & 0x1) << 8) | data[offset+5];
 #ifdef TS_LOG
+    EPCR = ((data[offset+4] & 0x1) << 8) | data[offset+5];
     printf ("demux_ts: PCR: %lld, EPCR: %u\n",
             PCR, EPCR);
 #endif
     offset+=6;
   }
+
+#ifdef TS_LOG
   if(OPCR_flag) {
     if (adaptation_field_length < offset + 6)
       return PCR;
@@ -1850,13 +1861,13 @@ static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
     OPCR |= data[offset+3] << 1;
     OPCR |= (data[offset+4] >> 7) & 0x01;
     EOPCR = ((data[offset+4] & 0x1) << 8) | data[offset+5];
-#ifdef TS_LOG
+
     printf ("demux_ts: OPCR: %u, EOPCR: %u\n",
             OPCR,EOPCR);
-#endif
+
     offset+=6;
   }
-#ifdef TS_LOG
+
   if(slicing_point_flag) {
     printf ("demux_ts: slicing_point_flag: %d\n",
             slicing_point_flag);
@@ -1869,7 +1880,8 @@ static int64_t demux_ts_adaptation_field_parse(uint8_t *data,
     printf ("demux_ts: adaptation_field_extension_flag: %d\n",
             adaptation_field_extension_flag);
   }
-#endif
+#endif /* TS_LOG */
+
   return PCR;
 }
 
