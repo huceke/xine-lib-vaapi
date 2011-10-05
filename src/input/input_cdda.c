@@ -1938,7 +1938,7 @@ static int cdda_open(cdda_input_plugin_t *this_gen,
 
   /* We use O_NONBLOCK for when /proc/sys/dev/cdrom/check_media is at 1 on
    * Linux systems */
-  fd = open_cloexec(cdda_device, O_RDONLY | O_NONBLOCK);
+  fd = xine_open_cloexec(cdda_device, O_RDONLY | O_NONBLOCK);
   if (fd == -1) {
     return -1;
   }

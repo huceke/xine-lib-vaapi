@@ -584,7 +584,7 @@ static int pvr_break_rec_page (pvr_input_plugin_t *this) {
 
   lprintf("opening pvr file for writing (%s)\n", filename);
 
-  this->rec_fd = create_cloexec(filename, O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  this->rec_fd = xine_create_cloexec(filename, O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if( this->rec_fd == -1 ) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 	    _("input_pvr: error creating pvr file (%s)\n"), filename);
@@ -741,7 +741,7 @@ static int pvr_play_file(pvr_input_plugin_t *this, fifo_buffer_t *fifo, uint8_t 
 
          lprintf("opening pvr file for reading (%s)\n", filename);
 
-         this->play_fd = open_cloexec(filename, O_RDONLY);
+         this->play_fd = xine_open_cloexec(filename, O_RDONLY);
          if( this->play_fd == -1 ) {
            xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 		   _("input_pvr: error opening pvr file (%s)\n"), filename);
@@ -1009,7 +1009,7 @@ static void pvr_event_handler (pvr_input_plugin_t *this) {
 
         /* as of ivtv 0.10.6: must close and reopen to set input */
         close(this->dev_fd);
-        this->dev_fd = open_cloexec(this->class->devname, O_RDWR);
+        this->dev_fd = xine_open_cloexec(this->class->devname, O_RDWR);
         if (this->dev_fd < 0) {
           xprintf(this->stream->xine, XINE_VERBOSITY_DEBUG,
                   "input_pvr: error opening device %s\n", this->class->devname );
@@ -1156,7 +1156,7 @@ static void pvr_event_handler (pvr_input_plugin_t *this) {
 
        /* how lame. we must close and reopen to change bitrate. */
        close(this->dev_fd);
-       this->dev_fd = open_cloexec(this->class->devname, O_RDWR);
+       this->dev_fd = xine_open_cloexec(this->class->devname, O_RDWR);
        if (this->dev_fd == -1) {
          xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 		 _("input_pvr: error opening device %s\n"), this->class->devname );
@@ -1416,7 +1416,7 @@ static int pvr_plugin_open (input_plugin_t *this_gen ) {
 
   this->saved_id = 0;
 
-  this->dev_fd = open_cloexec(this->class->devname, O_RDWR);
+  this->dev_fd = xine_open_cloexec(this->class->devname, O_RDWR);
   if (this->dev_fd == -1) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 	    _("input_pvr: error opening device %s\n"), this->class->devname );

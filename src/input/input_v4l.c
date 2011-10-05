@@ -822,7 +822,7 @@ static int open_radio_capture_device(v4l_input_plugin_t *this)
   entry = this->stream->xine->config->lookup_entry(this->stream->xine->config,
                                                    "media.video4linux.radio_device");
 
-  if((this->radio_fd = open_cloexec(entry->str_value, O_RDWR)) < 0) {
+  if((this->radio_fd = xine_open_cloexec(entry->str_value, O_RDWR)) < 0) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
             "input_v4l: error opening v4l device (%s): %s\n",
             entry->str_value, strerror(errno));
@@ -875,7 +875,7 @@ static int open_video_capture_device(v4l_input_plugin_t *this)
                                                    "media.video4linux.video_device");
 
   /* Try to open the video device */
-  if((this->video_fd = open_cloexec(entry->str_value, O_RDWR)) < 0) {
+  if((this->video_fd = xine_open_cloexec(entry->str_value, O_RDWR)) < 0) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
             "input_v4l: error opening v4l device (%s): %s\n",
             entry->str_value, strerror(errno));
@@ -1799,7 +1799,7 @@ static input_plugin_t *v4l_class_get_video_instance (input_class_t *cls_gen,
                                                    "media.video4linux.video_device");
 
   /* Try to open the video device */
-  if((this->video_fd = open_cloexec(entry->str_value, O_RDWR)) < 0) {
+  if((this->video_fd = xine_open_cloexec(entry->str_value, O_RDWR)) < 0) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
             "input_v4l: error opening v4l device (%s): %s\n",
             entry->str_value, strerror(errno));
@@ -1862,7 +1862,7 @@ static input_plugin_t *v4l_class_get_radio_instance (input_class_t *cls_gen,
   entry = this->stream->xine->config->lookup_entry(this->stream->xine->config,
                                                    "media.video4linux.radio_device");
 
-  if((this->radio_fd = open_cloexec(entry->str_value, O_RDWR)) < 0) {
+  if((this->radio_fd = xine_open_cloexec(entry->str_value, O_RDWR)) < 0) {
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
             "input_v4l: error opening v4l device (%s): %s\n",
             entry->str_value, strerror(errno));

@@ -359,7 +359,7 @@ static int file_plugin_open (input_plugin_t *this_gen ) {
   else
     filename = strdup(this->mrl); /* NEVER unescape plain file names! */
 
-  this->fh = open_cloexec(filename, O_RDONLY|O_BINARY);
+  this->fh = xine_open_cloexec(filename, O_RDONLY|O_BINARY);
 
   if (this->fh == -1) {
     if (errno == EACCES) {

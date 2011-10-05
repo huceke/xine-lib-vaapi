@@ -66,6 +66,15 @@
 # define XINE_PROTECTED
 #endif
 
+/* Export hidden only for private/internal libxine functions */
+#if defined(XINE_LIBRARY_COMPILE) && defined(SUPPORT_ATTRIBUTE_VISIBILITY_INTERNAL)
+# define XINE_INTERNAL __attribute__((__visibility__("internal")))
+#elif defined(XINE_LIBRARY_COMPILE) && defined(SUPPORT_ATTRIBUTE_VISIBILITY_DEFAULT)
+# define XINE_INTERNAL __attribute__((__visibility__("default")))
+#else
+# define XINE_INTERNAL
+#endif
+
 #ifdef SUPPORT_ATTRIBUTE_SENTINEL
 # define XINE_SENTINEL __attribute__((__sentinel__))
 #else

@@ -71,6 +71,8 @@ xine-lib (1.1.90) (Unreleased)
     colour controls, zooming, colour keying.
 
 xine-lib (1.1.??) 2010-??-??
+  * Ensure that file and socket descriptors are marked as CLOEXEC.
+  * Enable FFmpeg's support for AAC LATM audio.
   * Fix build-time check for dvdnav.
   * Allow use of GraphicsMagick instead of ImageMagick.
   * Fix build on Debian GNU/kFreeBSD (broken in 1.1.19).

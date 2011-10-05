@@ -90,7 +90,7 @@ static void open_registry(void)
 		printf("Multiple open_registry(>\n");
 		return;
 	}
-	fd = open_cloexec(localregpathname, O_RDONLY);
+	fd = xine_open_cloexec(localregpathname, O_RDONLY);
 	if (fd == -1)
 	{
 	    printf("Creating new registry\n");
@@ -133,7 +133,7 @@ static void save_registry(void)
 	int fd, i;
 	if (!regs)
 		init_registry();
-	fd = create_cloexec(localregpathname, O_WRONLY, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+	fd = xine_create_cloexec(localregpathname, O_WRONLY, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 	if (fd == -1)
 	{
 	    printf("Failed to open registry file '%s' for writing.\n",

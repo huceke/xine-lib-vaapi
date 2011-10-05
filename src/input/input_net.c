@@ -115,24 +115,12 @@ static int host_connect_attempt_ipv4(struct in_addr ia, int port, xine_t *xine) 
   int                s;
   struct sockaddr_in sin;
 
-  s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  s = xine_socket_cloexec(PF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (s==-1) {
     xine_log(xine, XINE_LOG_MSG,
              _("input_net: socket(): %s\n"), strerror(errno));
     return -1;
   }
-
-#ifndef WIN32
-  if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
-    xine_log(xine, XINE_LOG_MSG,
-             _("input_net: Failed to make socket uninheritable (%s)\n"),
-             strerror(errno));
-  }
-#else
-  if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
-    xine_log(xine, XINE_LOG_MSG, "Failed to make socket uninheritable\n");
-  }
-#endif
 
   sin.sin_family = AF_INET;
   sin.sin_addr   = ia;
@@ -155,26 +143,13 @@ static int host_connect_attempt_ipv4(struct in_addr ia, int port, xine_t *xine) 
 #else
 static int host_connect_attempt(int family, struct sockaddr* sin, int addrlen, xine_t *xine) {
 
-  int                s;
+  int s = xine_socket_cloexec(family, SOCK_STREAM, IPPROTO_TCP);
 
-  s = socket(family, SOCK_STREAM, IPPROTO_TCP);
-  if (s==-1) {
+  if (s == -1) {
     xine_log(xine, XINE_LOG_MSG,
              _("input_net: socket(): %s\n"), strerror(errno));
     return -1;
   }
-
-#ifndef WIN32
-  if (fcntl(s, F_SETFD, FD_CLOEXEC) < 0) {
-    xine_log(xine, XINE_LOG_MSG,
-             _("input_net: Failed to make socket uninheritable (%s)\n"),
-             strerror(errno));
-  }
-#else
-  if (!SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0)) {
-    xine_log(xine, XINE_LOG_MSG, "Failed to make socket uninheritable\n");
-  }
-#endif
 
 #ifndef WIN32
   if (connect(s, sin, addrlen)==-1 && errno != EINPROGRESS)

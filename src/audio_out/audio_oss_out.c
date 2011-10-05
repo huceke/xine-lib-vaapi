@@ -190,7 +190,7 @@ static int ao_oss_open(ao_driver_t *this_gen,
    * open audio device
    */
 
-  this->audio_fd = open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
+  this->audio_fd = xine_open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
   if (this->audio_fd < 0) {
     xprintf(this->xine, XINE_VERBOSITY_LOG,
 	    _("audio_oss_out: Opening audio device %s: %s\n"), this->audio_dev, strerror(errno));
@@ -781,7 +781,7 @@ static ao_driver_t *open_plugin (audio_driver_class_t *class_gen, const void *da
   xprintf(class->xine, XINE_VERBOSITY_LOG,
 	  _("audio_oss_out: using device >%s<\n"), this->audio_dev);
 
-  audio_fd = open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
+  audio_fd = xine_open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
 
   if (audio_fd < 0) {
     xprintf(class->xine, XINE_VERBOSITY_LOG,
@@ -894,7 +894,7 @@ static ao_driver_t *open_plugin (audio_driver_class_t *class_gen, const void *da
 	    _("audio_oss_out: Audio driver realtime sync disabled...\n"
 	      "audio_oss_out: ...probing output buffer size: %d bytes\naudio_oss_out: ...there may be audio/video synchronization issues\n"), this->buffer_size);
 
-    audio_fd = open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
+    audio_fd = xine_open_cloexec(this->audio_dev, O_WRONLY|O_NONBLOCK);
 
     if(audio_fd < 0)
     {
@@ -1048,7 +1048,7 @@ static ao_driver_t *open_plugin (audio_driver_class_t *class_gen, const void *da
     }
     _x_assert(this->mixer.name);
 
-    this->mixer.fd = open_cloexec(this->mixer.name, O_RDONLY);
+    this->mixer.fd = xine_open_cloexec(this->mixer.name, O_RDONLY);
 
     if(this->mixer.fd != -1) {
 

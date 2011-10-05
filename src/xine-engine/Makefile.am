@@ -20,7 +20,7 @@ else
 DEF_FILE =
 endif
 
-noinst_HEADERS = bswap.h ffmpeg_bswap.h
+noinst_HEADERS = bswap.h ffmpeg_bswap.h xine_private.h
 
 lib_LTLIBRARIES = libxine.la
 

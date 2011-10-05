@@ -277,7 +277,6 @@ typedef struct {
   int64_t          pts;
   buf_element_t   *buf;
   unsigned int     counter;
-  unsigned int     numPreview;
   uint16_t         descriptor_tag; /* +0x100 for PES stream IDs (no available TS descriptor tag?) */
   int              corrupted_pes;
   uint32_t         buffered_bytes;
@@ -351,6 +350,7 @@ typedef struct {
    * and audio PIDs, we keep the index of the corresponding entry
    * inthe media[] array.
    */
+  unsigned int     pcr_pid;
   unsigned int     videoPid;
   unsigned int     videoMedia;
 
@@ -654,6 +654,7 @@ static void demux_ts_parse_pat (demux_ts_t*this, unsigned char *original_pkt,
       this->last_pmt_crc = 0;
       this->videoPid = INVALID_PID;
       this->spu_pid = INVALID_PID;
+      this->pcr_pid = INVALID_PID;
 
       if (this->pmt[program_count] != NULL) {
 	free(this->pmt[program_count]);
@@ -790,9 +791,8 @@ static int demux_ts_parse_pes_header (xine_t *xine, demux_ts_media *m,
       m->type |= BUF_AUDIO_EAC3;
       return 1;
 
-    } else if((m->descriptor_tag == STREAM_AUDIO_AC3) ||    /* ac3 - raw */
-       (packet_len > 1 && p[0] == 0x0B && p[1] == 0x77)) { /* ac3 - syncword */
-      m->content   = p;
+    } else if(m->descriptor_tag == STREAM_AUDIO_AC3) {    /* ac3 - raw */
+      m->content = p;
       m->size = packet_len;
       m->type |= BUF_AUDIO_A52;
       return 1;
@@ -840,6 +840,13 @@ static int demux_ts_parse_pes_header (xine_t *xine, demux_ts_media *m,
       m->type |= BUF_SPU_DVB;
       m->buf->decoder_info[2] = payload_len;
       return 1;
+
+    } else if (p[0] == 0x0B && p[1] == 0x77) { /* ac3 - syncword */
+      m->content = p;
+      m->size = packet_len;
+      m->type |= BUF_AUDIO_A52;
+      return 1;
+
     } else if ((p[0] & 0xE0) == 0x20) {
       spu_id = (p[0] & 0x1f);
 
@@ -858,9 +865,11 @@ static int demux_ts_parse_pes_header (xine_t *xine, demux_ts_media *m,
       m->type      |= BUF_AUDIO_A52;
       return 1;
 
+#if 0
+    /* commented out: does not set PCM type. Decoder can't handle raw PCM stream without configuration. */
     } else if ((p[0]&0xf0) == 0xa0) {
 
-      int pcm_offset;
+      unsigned int pcm_offset;
 
       for (pcm_offset=0; ++pcm_offset < packet_len-1 ; ){
         if (p[pcm_offset] == 0x01 && p[pcm_offset+1] == 0x80 ) { /* START */
@@ -877,6 +886,7 @@ static int demux_ts_parse_pes_header (xine_t *xine, demux_ts_media *m,
       m->size      = packet_len-pcm_offset;
       m->type      |= BUF_AUDIO_LPCM_BE;
       return 1;
+#endif
     }
 
   } else if ((stream_id & 0xf0) == 0xe0) {
@@ -939,15 +949,6 @@ static int demux_ts_parse_pes_header (xine_t *xine, demux_ts_media *m,
   return 0 ;
 }
 
-
-/*
- * Track how many of these types of packets we have seen in this stream.
- */
-static inline unsigned get_preview_frame_number(unsigned *numPreview, unsigned limit) {
-  unsigned preview = *numPreview;
-  return (preview < limit) ? ++(*numPreview) : preview;
-}
-
 /*
  *  buffer arriving pes data
  */
@@ -979,44 +980,11 @@ static void demux_ts_buffer_pes(demux_ts_t*this, unsigned char *ts,
 
   if (pus) { /* new PES packet */
     if (m->buffered_bytes) {
-      unsigned previewLimit = 0;
 
       m->buf->content = m->buf->mem;
       m->buf->size = m->buffered_bytes;
       m->buf->type = m->type;
-
-      switch (m->type & BUF_MAJOR_MASK) {
-      case BUF_SPU_BASE:
-        if( (m->buf->type & (BUF_MAJOR_MASK | BUF_DECODER_MASK)) == BUF_SPU_DVB ) {
-            /* TODO: DVBSUB handling needed? */
-        }
-        break;
-
-      case BUF_VIDEO_BASE:
-        previewLimit = 5;
-        break;
-
-      case BUF_AUDIO_BASE:
-        previewLimit = 2;
-        break;
-
-      default:
-        break;
-      }
-
-      if (previewLimit != 0) {
-        unsigned numPreview;
-
-        numPreview = get_preview_frame_number(&m->numPreview, previewLimit);
-
-        if (numPreview == 1)
-          m->buf->decoder_flags = BUF_FLAG_HEADER | BUF_FLAG_FRAME_END;
-        else if (numPreview < previewLimit)
-          m->buf->decoder_flags = BUF_FLAG_PREVIEW;
-        else
-          m->buf->decoder_flags |= BUF_FLAG_FRAME_END;
-      }
-
+      m->buf->decoder_flags |= BUF_FLAG_FRAME_END;
       m->buf->pts = m->pts;
       m->buf->decoder_info[0] = 1;
 
@@ -1097,7 +1065,6 @@ static void demux_ts_pes_new(demux_ts_t*this,
   if (m->buf != NULL) m->buf->free_buffer(m->buf);
   m->buf = NULL;
   m->counter = INVALID_CC;
-  m->numPreview = 0;
   m->descriptor_tag = descriptor;
   m->corrupted_pes = 1;
   m->buffered_bytes = 0;
@@ -1612,23 +1579,21 @@ printf("Program Number is %i, looking for %i\n",program_number,this->program_num
     section_length -= coded_length;
   }
 
-#if 0
   /*
    * Get the current PCR PID.
    */
   pid = ((this->pmt[program_count][8] << 8)
          | this->pmt[program_count][9]) & 0x1fff;
-  if (this->pcrPid != pid) {
+  if (this->pcr_pid != pid) {
 #ifdef TS_PMT_LOG
-    if (this->pcrPid == INVALID_PID) {
+    if (this->pcr_pid == INVALID_PID) {
       printf ("demux_ts: PMT pcr pid 0x%.4x\n", pid);
     } else {
       printf ("demux_ts: PMT pcr pid changed 0x%.4x\n", pid);
     }
 #endif
-    this->pcrPid = pid;
+    this->pcr_pid = pid;
   }
-#endif
 
   if ( this->stream->spu_channel>=0 && this->spu_langs_count>0 )
     demux_ts_update_spu_channel( this );
@@ -2076,6 +2041,7 @@ static void demux_ts_event_handler (demux_ts_t *this) {
     case XINE_EVENT_PIDS_CHANGE:
 
       this->videoPid    = INVALID_PID;
+      this->pcr_pid     = INVALID_PID;
       this->audio_tracks_count = 0;
       this->media_num   = 0;
       this->send_newpts = 1;
@@ -2156,6 +2122,7 @@ static void demux_ts_send_headers (demux_plugin_t *this_gen) {
    */
 
   this->videoPid = INVALID_PID;
+  this->pcr_pid = INVALID_PID;
   this->audio_tracks_count = 0;
   this->media_num= 0;
   this->last_pmt_crc = 0;
@@ -2383,6 +2350,7 @@ static demux_plugin_t *open_plugin (demux_class_t *class_gen,
 
   this->scrambled_npids = 0;
   this->videoPid = INVALID_PID;
+  this->pcr_pid = INVALID_PID;
   this->audio_tracks_count = 0;
   this->last_pmt_crc = 0;
 
