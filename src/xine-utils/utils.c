@@ -32,13 +32,16 @@
 #ifdef _MSC_VER
 #include <xine/xine_internal.h>
 #endif
+#include "xine_private.h"
 
 #include <errno.h>
 #include <pwd.h>
+#include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
 
 #if HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -724,7 +727,7 @@ char *xine_strcat_realloc (char **dest, char *append)
 }
 
 
-static int set_close_on_execute(int fd)
+int _x_set_file_close_on_exec(int fd)
 {
 #ifndef WIN32
   return fcntl(fd, F_SETFD, FD_CLOEXEC);
@@ -733,26 +736,46 @@ static int set_close_on_execute(int fd)
 #endif
 }
 
+int _x_set_socket_close_on_exec(int s)
+{
+#ifndef WIN32
+  return fcntl(s, F_SETFD, FD_CLOEXEC);
+#else
+  return SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0);
+#endif
+}
 
-int open_cloexec(const char *name, int flags)
+
+int xine_open_cloexec(const char *name, int flags)
 {
   int fd = open(name, (flags | O_CLOEXEC));
 
   if (fd >= 0) {
-    set_close_on_execute(fd);
+    _x_set_file_close_on_exec(fd);
   }
 
   return fd;
 }
 
-int create_cloexec(const char *name, int flags, mode_t mode)
+int xine_create_cloexec(const char *name, int flags, mode_t mode)
 {
   int fd = open(name, (flags | O_CREAT | O_CLOEXEC), mode);
 
   if (fd >= 0) {
-    set_close_on_execute(fd);
+    _x_set_file_close_on_exec(fd);
   }
 
   return fd;
+}
+
+int xine_socket_cloexec(int domain, int type, int protocol)
+{
+  int s = socket(domain, type, protocol);
+
+  if (s >= 0) {
+    _x_set_socket_close_on_exec(s);
+  }
+
+  return s;
 }
 

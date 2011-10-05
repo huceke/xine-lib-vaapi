@@ -115,7 +115,7 @@ static int ao_file_open(ao_driver_t *this_gen, uint32_t bits, uint32_t rate, int
 	if (!this->fname)
 		this->fname = "xine-out.wav";
 
-	this->fd = create_cloexec(this->fname, O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+	this->fd = xine_create_cloexec(this->fname, O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 
 	if (this->fd == -1) {
 		xprintf (this->xine, XINE_VERBOSITY_LOG, "audio_file_out: Failed to open file '%s': %s\n",

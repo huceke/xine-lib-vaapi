@@ -185,13 +185,19 @@ char *xine_strcat_realloc (char **dest, char *append) XINE_PROTECTED;
  * opens a file, ensuring that the descriptor will be closed
  * automatically after a fork/execute.
  */
-int open_cloexec(const char *name, int flags) XINE_PROTECTED;
+int xine_open_cloexec(const char *name, int flags) XINE_PROTECTED;
 
 /**
  * creates a file, ensuring that the descriptor will be closed
  * automatically after a fork/execute.
  */
-int create_cloexec(const char *name, int flags, mode_t mode) XINE_PROTECTED;
+int xine_create_cloexec(const char *name, int flags, mode_t mode) XINE_PROTECTED;
+
+/**
+ * creates a socket, ensuring that the descriptor will be closed
+ * automatically after a fork/execute.
+ */
+int xine_socket_cloexec(int domain, int type, int protocol) XINE_PROTECTED;
 
 /*
  * Color Conversion Utility Functions
