@@ -340,6 +340,11 @@ typedef struct {
   int              rate;
   int              media_num;
   demux_ts_media   media[MAX_PIDS];
+
+  /* PAT */
+  uint32_t         last_pat_crc;
+  uint32_t         transport_stream_id;
+  /* programs */
   uint32_t         program_number[MAX_PMTS];
   uint32_t         pmt_pid[MAX_PMTS];
   uint8_t         *pmt[MAX_PMTS];
@@ -620,6 +625,20 @@ static void demux_ts_parse_pat (demux_ts_t*this, unsigned char *original_pkt,
     printf ("demux_ts: PAT CRC32 ok.\n");
   }
 #endif
+
+  if (crc32 == this->last_pat_crc &&
+      this->transport_stream_id == transport_stream_id) {
+    lprintf("demux_ts: PAT CRC unchanged\n");
+    return;
+  }
+
+  if (this->transport_stream_id != transport_stream_id) {
+    xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+             "demux_ts: PAT transport_stream_id changed\n");
+  }
+
+  this->last_pat_crc = crc32;
+  this->transport_stream_id = transport_stream_id;
 
   /*
    * Process all programs in the program loop.
@@ -1944,35 +1963,33 @@ static void demux_ts_parse_packet (demux_ts_t*this) {
     return;
   }
 
-  data_len = PKT_SIZE - data_offset;
-
-  /*
-   * audio/video pid auto-detection, if necessary
-   */
-   program_count=0;
-   if(this->media_num<MAX_PMTS)
-      while ((this->program_number[program_count] != INVALID_PROGRAM) &&
-		 (program_count < MAX_PMTS)) {
-        if (pid == this->pmt_pid[program_count]) {
-
-#ifdef TS_LOG
-          printf ("demux_ts: PMT prog: 0x%.4x pid: 0x%.4x\n",
-            this->program_number[program_count],
-            this->pmt_pid[program_count]);
-#endif
-	demux_ts_parse_pmt (this, originalPkt, originalPkt+data_offset-4,
-	  payload_unit_start_indicator,
-	  program_count);
-	  return;
-      }
-      program_count++;
-    }
-
-  if (payload_unit_start_indicator && (this->media_num < MAX_PIDS) && (pid == 0)) {
+  /* PAT */
+  if (pid == 0) {
     demux_ts_parse_pat(this, originalPkt, originalPkt+data_offset-4,
-                       payload_unit_start_indicator);
+		       payload_unit_start_indicator);
     return;
   }
+
+  /* PMT */
+  program_count=0;
+  while ((this->program_number[program_count] != INVALID_PROGRAM) &&
+         (program_count < MAX_PMTS)) {
+    if (pid == this->pmt_pid[program_count]) {
+
+#ifdef TS_LOG
+      printf ("demux_ts: PMT prog: 0x%.4x pid: 0x%.4x\n",
+              this->program_number[program_count],
+              this->pmt_pid[program_count]);
+#endif
+      demux_ts_parse_pmt (this, originalPkt, originalPkt+data_offset-4,
+                          payload_unit_start_indicator,
+                          program_count);
+      return;
+    }
+    program_count++;
+  }
+
+  data_len = PKT_SIZE - data_offset;
 
   if (data_len > PKT_SIZE) {
 
@@ -2336,6 +2353,10 @@ static demux_plugin_t *open_plugin (demux_class_t *class_gen,
   /*
    * Initialise our specialised data.
    */
+
+  this->last_pat_crc = 0;
+  this->transport_stream_id = -1;
+
   for (i = 0; i < MAX_PIDS; i++) {
     this->media[i].pid = INVALID_PID;
     this->media[i].buf = NULL;
