@@ -104,7 +104,7 @@
 #define CD_LEADOUT_TRACK        0xAA
 #define CD_BLOCK_OFFSET         150
 
-#if defined(HAVE_LIBAVUTIL_SHA1_H) && !defined(HAVE_LIBAVUTIL_SHA_H)
+#if !defined(HAVE_LIBAVUTIL_SHA_H)
 /* old libavutil/sha1.h was found... */
 #define AVSHA AVSHA1
 #  define av_sha_init(c,b) 	av_sha1_init(c)
