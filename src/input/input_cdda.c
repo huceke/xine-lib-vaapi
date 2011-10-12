@@ -2507,6 +2507,8 @@ static char ** cdda_class_get_autoplay_list (input_class_t *this_gen,
   num_tracks = toc->last_track - toc->first_track;
   if (toc->ignore_last_track)
     num_tracks--;
+  if (num_tracks >= MAX_TRACKS-1)
+    num_tracks = MAX_TRACKS - 2;
   for ( i = 0; i <= num_tracks; i++ )
     asprintf(&this->autoplaylist[i],"cdda:/%d",i+toc->first_track);
 
