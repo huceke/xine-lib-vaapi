@@ -23,6 +23,8 @@
 #ifndef HTTP_HELPER_H
 #define HTTP_HELPER_H
 
+#include <xine/attributes.h>
+
 /*
  * user agent finder, using modified protcol names
  * {proto}://...
@@ -53,8 +55,9 @@ int _x_parse_url (char *url, char **proto, char** host, int *port,
  *
  * return:
  *   the canonicalised URL (caller must free() it)
+ *   NULL if error
  */
-static inline char *_x_canonicalise_url (const char *base, const char *url) {
+static inline XINE_MALLOC char *_x_canonicalise_url (const char *base, const char *url) {
 
   size_t base_length;
   char *cut, *ret;

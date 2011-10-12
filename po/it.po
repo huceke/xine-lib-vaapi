@@ -452,7 +452,7 @@ msgstr "Impossibile impostare il volume sonoro"
 
 #: src/audio_out/audio_directx2_out.c:391
 #, c-format
-msgid ": buffer lost, tryig to restore\n"
+msgid ": buffer lost, trying to restore\n"
 msgstr ": buffer perso, provando a recuperare\n"
 
 #: src/audio_out/audio_directx2_out.c:395
@@ -3546,7 +3546,7 @@ msgstr ""
 msgid ""
 "This filter will perform a time stretch, playing the stream faster or slower "
 "by a factor. Pitch is optionally preserved, so it is possible, for example, "
-"to use it to watch a movie in less time than it was originaly shot.\n"
+"to use it to watch a movie in less time than it was originally shot.\n"
 msgstr ""
 "Questo filtro effettua una dilatazione temporale, riproducendo il flusso più "
 "velocemente o più lentamente da un fattore. Il tono è, su richiesta, "
@@ -3685,7 +3685,7 @@ msgid ""
 "usage.\n"
 "\n"
 "* Uses several algorithms from tvtime and dscaler projects.\n"
-"Deinterlacing methods: (Not all methods are available for all plataforms)\n"
+"Deinterlacing methods: (Not all methods are available for all platforms)\n"
 "\n"
 msgstr ""
 

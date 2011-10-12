@@ -175,6 +175,8 @@ void *_x_real_codec_open(xine_stream_t *const stream, const char *const path,
 
     xprintf (stream->xine, XINE_VERBOSITY_DEBUG,
 	     LOG_MODULE ": error loading %s: %s\n", codecpath, dlerror());
+
+    free(codecpath);
   }
 
   _x_message(stream, XINE_MSG_LIBRARY_LOAD_ERROR, codec_name, NULL);

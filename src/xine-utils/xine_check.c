@@ -93,7 +93,8 @@ set_hc_result(xine_health_check_t* hc, int state, const char *format, ...)
   }
 
   va_start(args, format);
-  vasprintf (&buf, format, args);
+  if (vasprintf (&buf, format, args) < 0)
+    buf = NULL;
   va_end(args);
 
   if (!buf)
