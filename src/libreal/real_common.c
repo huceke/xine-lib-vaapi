@@ -155,7 +155,7 @@ void *_x_real_codec_open(xine_stream_t *const stream, const char *const path,
   char *codecpath = NULL;
   void *codecmodule = NULL;
 
-  asprintf(&codecpath, "%s/%s", path, codec_name);
+  codecpath = _x_asprintf("%s/%s", path, codec_name);
   if ( (codecmodule = dlopen(codecpath, RTLD_NOW)) ) {
     free(codecpath);
     return codecmodule;
@@ -167,7 +167,7 @@ void *_x_real_codec_open(xine_stream_t *const stream, const char *const path,
   free(codecpath);
 
   if ( codec_alternate ) {
-    asprintf(&codecpath, "%s/%s", path, codec_alternate);
+    codecpath = _x_asprintf("%s/%s", path, codec_alternate);
     if ( (codecmodule = dlopen(codecpath, RTLD_NOW)) ) {
       free(codecpath);
       return codecmodule;

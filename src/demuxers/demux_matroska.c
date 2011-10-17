@@ -3009,7 +3009,7 @@ static demux_plugin_t *open_plugin (demux_class_t *class_gen, xine_stream_t *str
   if (ebml->max_size_len > 8)
     goto error;
   /* handle both Matroska and WebM here; we don't (presently) differentiate */
-  if (strcmp(ebml->doctype, "matroska") && strcmp(ebml->doctype, "webm"))
+  if (!ebml->doctype || (strcmp(ebml->doctype, "matroska") && strcmp(ebml->doctype, "webm")))
     goto error;
 
   this->event_queue = xine_event_new_queue(this->stream);
@@ -3019,7 +3019,7 @@ static demux_plugin_t *open_plugin (demux_class_t *class_gen, xine_stream_t *str
 error:
   dispose_ebml_parser(ebml);
 
-  if (NULL != this) {
+  if (this != NULL && this->event_queue != NULL) {
     xine_event_dispose_queue(this->event_queue);
     free(this);
   }

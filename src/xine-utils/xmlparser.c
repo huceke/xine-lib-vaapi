@@ -213,7 +213,8 @@ static xml_node_t *xml_parser_append_text (xml_node_t *node, xml_node_t *subnode
     if (subnode->name == cdata) {
       /* most recent node is CDATA - append to it */
       char *newtext;
-      asprintf (&newtext, "%s%s", subnode->data, text);
+      if (asprintf (&newtext, "%s%s", subnode->data, text) < 0)
+	newtext = NULL;
       free (subnode->data);
       subnode->data = newtext;
     } else {
@@ -226,7 +227,8 @@ static xml_node_t *xml_parser_append_text (xml_node_t *node, xml_node_t *subnode
   } else if (node->data) {
     /* "no" subtree, but we have existing text - append to it */
     char *newtext;
-    asprintf (&newtext, "%s%s", node->data, text);
+    if (asprintf (&newtext, "%s%s", node->data, text) < 0)
+      newtext = NULL;
     free (node->data);
     node->data = newtext;
   } else {
@@ -327,7 +329,8 @@ static int xml_parser_get_node_internal (xml_parser_t *xml_parser,
 	    strtoupper(tok);
 	  }
 	  if (state == STATE_Q_NODE) {
-	    asprintf (&node_name, "?%s", tok);
+	    if (asprintf (&node_name, "?%s", tok) < 0)
+	      node_name = NULL;
 	    free (*nname_buffer);
 	    *nname_buffer = node_name;
 	    *nname_buffer_size = strlen (node_name) + 1;

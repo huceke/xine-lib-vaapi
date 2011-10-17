@@ -711,8 +711,7 @@ static xine_mrl_t **file_class_get_dir (input_class_t *this_gen,
       else {
 
 	dir_files[num_dir_files].origin = strdup(current_dir);
-	asprintf(&(dir_files[num_dir_files].mrl), "%s%s",
-		current_dir_slashed, pdirent->d_name);
+	dir_files[num_dir_files].mrl    = _x_asprintf("%s%s", current_dir_slashed, pdirent->d_name);
 	dir_files[num_dir_files].link   = NULL;
 	dir_files[num_dir_files].type   = get_file_type(fullfilename, current_dir, this->xine);
 	dir_files[num_dir_files].size   = get_file_size(fullfilename, current_dir);
@@ -747,8 +746,7 @@ static xine_mrl_t **file_class_get_dir (input_class_t *this_gen,
       if(this->show_hidden_files) {
 
 	hide_files[num_hide_files].origin = strdup(current_dir);
-	asprintf(&(hide_files[num_hide_files].mrl), "%s%s",
-		current_dir_slashed, pdirent->d_name);
+	hide_files[num_hide_files].mrl    = _x_asprintf("%s%s", current_dir_slashed, pdirent->d_name);
 	hide_files[num_hide_files].link   = NULL;
 	hide_files[num_hide_files].type   = get_file_type(fullfilename, current_dir, this->xine);
 	hide_files[num_hide_files].size   = get_file_size(fullfilename, current_dir);
@@ -779,8 +777,7 @@ static xine_mrl_t **file_class_get_dir (input_class_t *this_gen,
     else {
 
       norm_files[num_norm_files].origin = strdup(current_dir);
-      asprintf(&(norm_files[num_norm_files].mrl), "%s%s",
-	      current_dir_slashed, pdirent->d_name);
+      norm_files[num_norm_files].mrl    = _x_asprintf("%s%s", current_dir_slashed, pdirent->d_name);
       norm_files[num_norm_files].link   = NULL;
       norm_files[num_norm_files].type   = get_file_type(fullfilename, current_dir, this->xine);
       norm_files[num_norm_files].size   = get_file_size(fullfilename, current_dir);

@@ -123,16 +123,17 @@ static char * get_help (void) {
   static char *help = NULL;
 
   if( !help ) {
-    asprintf(&help, "%s%s%s",
-	     _("FFmpeg libpostprocess plugin.\n"
-	       "\n"
-	       "Parameters\n"
-	       "\n"),
-	     pp_help,
-	     _("\n"
-	       "* libpostprocess (C) Michael Niedermayer\n")
-	     );
+    help = _x_asprintf("%s%s%s",
+		       _("FFmpeg libpostprocess plugin.\n"
+			 "\n"
+			 "Parameters\n"
+			 "\n"),
+		       pp_help,
+		       _("\n"
+			 "* libpostprocess (C) Michael Niedermayer\n")
+		       );
   }
+
   return help;
 }
 

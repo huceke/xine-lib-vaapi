@@ -1336,7 +1336,7 @@ static int dxr3_overlay_read_state(dxr3_overlay_t *this)
    * (used by .overlay/res file) */
   setlocale(LC_NUMERIC, "C");
 
-  asprintf(&fname, "%s/.overlay/res_%dx%dx%d", getenv("HOME"),
+  fname = _x_asprintf("%s/.overlay/res_%dx%dx%d", getenv("HOME"),
     this->screen_xres, this->screen_yres, this->screen_depth);
   llprintf(LOG_OVR, "attempting to open %s\n", fname);
   if (!(fp = fopen(fname, "r"))) {

@@ -1000,8 +1000,7 @@ static xine_mrl_t **vcd_class_get_dir (input_class_t *this_gen, const char *file
       memset(this->mrls[(i-1)], 0, sizeof(xine_mrl_t));
     }
 
-    asprintf(&(this->mrls[i-1]->mrl), "vcdo:/%d", i);
-
+    this->mrls[i-1]->mrl  = _x_asprintf("vcdo:/%d", i);
     this->mrls[i-1]->type = mrl_vcd;
 
     /* hack */
@@ -1055,7 +1054,7 @@ static char ** vcd_class_get_autoplay_list (input_class_t *this_gen, int *num_fi
 
   /* FIXME: check if track 0 contains valid data */
   for (i = 1; i < this->total_tracks; i++)
-    asprintf(&this->filelist[i-1], "vcdo:/%d", i);
+    this->filelist[i-1] = _x_asprintf("vcdo:/%d", i);
 
   /* printf ("%d tracks\n", this->total_tracks); */
 

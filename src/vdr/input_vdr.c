@@ -1958,7 +1958,7 @@ static int vdr_plugin_open_fifo_mrl(input_plugin_t *this_gen)
 
   {
     char *filename_control = 0;
-    asprintf(&filename_control, "%s.control", filename);
+    filename_control = _x_asprintf("%s.control", filename);
 
     this->fh_control = xine_open_cloexec(filename_control, O_RDONLY);
 
@@ -1978,7 +1978,7 @@ static int vdr_plugin_open_fifo_mrl(input_plugin_t *this_gen)
 
   {
     char *filename_result = 0;
-    asprintf(&filename_result, "%s.result", filename);
+    filename_result = _x_asprintf("%s.result", filename);
 
     this->fh_result = xine_open_cloexec(filename_result, O_WRONLY);
 
@@ -2000,7 +2000,7 @@ static int vdr_plugin_open_fifo_mrl(input_plugin_t *this_gen)
 
   {
     char *filename_event = 0;
-    asprintf(&filename_event, "%s.event", filename);
+    filename_event = _x_asprintf("%s.event", filename);
 
     this->fh_event = xine_open_cloexec(filename_event, O_WRONLY);
 
