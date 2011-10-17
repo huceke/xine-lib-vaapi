@@ -182,6 +182,14 @@ void xine_usec_sleep(unsigned usec) XINE_PROTECTED;
 char *xine_strcat_realloc (char **dest, char *append) XINE_PROTECTED;
 
 /**
+ * asprintf wrapper
+ * allocate a string large enough to hold the output, and return a pointer to
+ * it. This pointer should be passed to free when it is no longer needed.
+ * return NULL on error.
+ */
+char *_x_asprintf(const char *format, ...) XINE_PROTECTED XINE_MALLOC XINE_FORMAT_PRINTF(1, 2);
+
+/**
  * opens a file, ensuring that the descriptor will be closed
  * automatically after a fork/execute.
  */

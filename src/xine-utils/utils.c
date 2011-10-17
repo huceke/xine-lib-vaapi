@@ -726,6 +726,18 @@ char *xine_strcat_realloc (char **dest, char *append)
   return newstr;
 }
 
+char *_x_asprintf(const char *format, ...)
+{
+  va_list ap;
+  char *buf = NULL;
+
+  va_start (ap, format);
+  if (vasprintf (&buf, format, ap) < 0)
+    buf = NULL;
+  va_end (ap);
+
+  return buf;
+}
 
 int _x_set_file_close_on_exec(int fd)
 {

@@ -1085,7 +1085,7 @@ static int osd_lookup_xdg( osd_object_t *osd, const char *const fontname ) {
     while( (*data_dirs) && *(*data_dirs) ) {
       FT_Error fte = FT_Err_Ok;
       char *fontpath = NULL;
-      asprintf(&fontpath, "%s/"PACKAGE"/fonts/%s", *data_dirs, fontname);
+      fontpath = _x_asprintf("%s/"PACKAGE"/fonts/%s", *data_dirs, fontname);
 
       fte = FT_New_Face(osd->ft2->library, fontpath, 0, &osd->ft2->face);
 
@@ -1661,7 +1661,7 @@ static void osd_preload_fonts (osd_renderer_t *this, char *path) {
           lprintf("font '%s' size %d is preloaded\n",
                   font->name, font->size);
 
-          asprintf (&font->filename, "%s/%s", path, entry->d_name);
+          font->filename = _x_asprintf ("%s/%s", path, entry->d_name);
 
           font->next = this->fonts;
           this->fonts = font;
