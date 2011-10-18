@@ -350,7 +350,7 @@ static uint32_t v4l2_input_get_capabilities(input_plugin_t* this_gen) {
 }
 
 static const char* v4l2_input_get_mrl(input_plugin_t* this_gen) {
-    v4l2_input_plugin_t* this = (v4l2_input_plugin_t*)this_gen;
+    /*v4l2_input_plugin_t* this = (v4l2_input_plugin_t*)this_gen;*/
     /* HACK HACK HACK HACK */
     /* So far, the only way to get the yuv_frames demuxer to work with this */
     return "v4l:/";
