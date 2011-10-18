@@ -2566,8 +2566,12 @@ static off_t dvb_plugin_read (input_plugin_t *this_gen,
 
   ts_rewrite_packets (this, buf,total);
 
-  if ((this->record_fd)&&(!this->record_paused))
-    write (this->record_fd, buf, total);
+  if ((this->record_fd > -1) && (!this->record_paused))
+    if (write (this->record_fd, buf, total) != total) {
+      do_record(this);
+      xprintf(this->class->xine, XINE_VERBOSITY_LOG,
+	      "input_dvb: Recording failed\n");
+    }
 
   pthread_mutex_unlock( &this->channel_change_mutex );
 
