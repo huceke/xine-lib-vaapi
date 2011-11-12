@@ -71,7 +71,7 @@ typedef struct faad_decoder_s {
   int              size;
   int              rec_audio_src_size;
   int              max_audio_src_size;
-  int              pts;
+  int64_t          pts;
 
   unsigned char   *dec_config;
   int              dec_config_size;
