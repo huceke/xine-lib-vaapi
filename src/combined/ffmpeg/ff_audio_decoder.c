@@ -75,6 +75,8 @@ typedef struct ff_audio_decoder_s {
   char              *decode_buffer;
   int               decoder_ok;
 
+  AVCodecParserContext *parser_context;
+
 } ff_audio_decoder_t;
 
 
@@ -164,6 +166,24 @@ static void ff_audio_init_codec(ff_audio_decoder_t *this, unsigned int codec_typ
   this->context->codec_id    = this->codec->id;
   this->context->codec_type  = this->codec->type;
   this->context->codec_tag   = _x_stream_info_get(this->stream, XINE_STREAM_INFO_AUDIO_FOURCC);
+
+  /* Use parser for AAC LATM and MPEG.
+   * Fixes:
+   *  - DVB streams where multiple AAC LATM frames are packed to single PES
+   *  - DVB streams where MPEG audio frames do not follow PES packet boundaries
+   */
+  if (codec_type == BUF_AUDIO_AAC_LATM ||
+      codec_type == BUF_AUDIO_MPEG) {
+
+    xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+             "ffmpeg_audio_dec: using parser\n");
+
+    this->parser_context = av_parser_init(this->codec->id);
+    if (!this->parser_context) {
+      xprintf (this->stream->xine, XINE_VERBOSITY_LOG,
+               "ffmpeg_audio_dec: couldn't init parser\n");
+    }
+  }
 }
 
 static int ff_audio_open_codec(ff_audio_decoder_t *this, unsigned int codec_type) {
@@ -310,6 +330,83 @@ static void ff_handle_header_buffer(ff_audio_decoder_t *this, buf_element_t *buf
   this->size = 0;
 }
 
+static void ff_audio_reset_parser(ff_audio_decoder_t *this)
+{
+  /* reset parser */
+  if (this->parser_context) {
+    xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+             "ffmpeg_audio_dec: resetting parser\n");
+
+    pthread_mutex_lock (&ffmpeg_lock);
+    av_parser_close(this->parser_context);
+    this->parser_context = av_parser_init(this->codec->id);
+    pthread_mutex_unlock (&ffmpeg_lock);
+  }
+}
+
+static int ff_audio_decode(xine_t *xine,
+                           AVCodecContext *ctx,
+                           AVCodecParserContext *parser_ctx,
+                           int16_t *decode_buffer, int *decode_buffer_size,
+                           uint8_t *buf, int size)
+{
+  int consumed;
+  int parser_consumed = 0;
+
+  if (parser_ctx) {
+    uint8_t *outbuf;
+    int      outsize;
+
+    do {
+      int ret = av_parser_parse2(parser_ctx, ctx,
+                                 &outbuf, &outsize,
+                                 buf, size,
+                                 0, 0, 0); 
+      parser_consumed += ret;
+      buf             += ret;
+      size            -= ret;
+    } while (size > 0 && outsize <= 0);
+
+    /* nothing to decode ? */
+    if (outsize <= 0) {
+      *decode_buffer_size = 0;
+      xprintf (xine, XINE_VERBOSITY_DEBUG,
+               "ffmpeg_audio_dec: not enough data to decode\n");
+      return parser_consumed;
+    }
+
+    /* decode next packet */
+    buf  = outbuf;
+    size = outsize;
+  }
+
+#if AVAUDIO > 2
+  AVPacket avpkt;
+  av_init_packet (&avpkt);
+  avpkt.data = buf;
+  avpkt.size = size;
+  avpkt.flags = AV_PKT_FLAG_KEY;
+  consumed = avcodec_decode_audio3 (ctx,
+                                    decode_buffer, decode_buffer_size,
+                                    &avpkt);
+#else
+  consumed = avcodec_decode_audio2 (ctx,
+                                    decode_buffer, decode_buffer_size,
+                                    buf, size);
+#endif
+
+  if (consumed < 0) {
+    xprintf (xine, XINE_VERBOSITY_DEBUG,
+             "ffmpeg_audio_dec: error decompressing audio frame (%d)\n", consumed);
+  } else if (parser_consumed && consumed != size) {
+
+    xprintf (xine, XINE_VERBOSITY_DEBUG,
+             "ffmpeg_audio_dec: decoder didn't consume all data\n");
+  }
+
+  return parser_consumed ? parser_consumed : consumed;
+}
+
 static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf) {
 
   ff_audio_decoder_t *this = (ff_audio_decoder_t *) this_gen;
@@ -332,10 +429,6 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
 
   } else {
 
-#if AVAUDIO > 2
-    AVPacket avpkt;
-#endif
-
     if( !this->decoder_ok ) {
       if (ff_audio_open_codec(this, codec_type) < 0) {
 	return;
@@ -349,49 +442,7 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
     xine_fast_memcpy (&this->buf[this->size], buf->content, buf->size);
     this->size += buf->size;
 
-    if (!this->output_open) {
-      if (!this->audio_bits || !this->audio_sample_rate || !this->audio_channels) {
-        int ret;
-
-        decode_buffer_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
-#if AVAUDIO > 2
-	av_init_packet (&avpkt);
-	avpkt.data = (uint8_t *)&this->buf[0];
-	avpkt.size = this->size;
-	avpkt.flags = AV_PKT_FLAG_KEY;
-	ret = avcodec_decode_audio3 (this->context,
-				     (int16_t *)this->decode_buffer,
-				     &decode_buffer_size, &avpkt);
-#else
-        ret = avcodec_decode_audio2 (this->context,
-                                     (int16_t *)this->decode_buffer,
-                                     &decode_buffer_size,
-                                     &this->buf[0],
-                                     this->size);
-#endif
-	this->audio_bits = this->context->bits_per_sample;
-	this->audio_sample_rate = this->context->sample_rate;
-	this->audio_channels = this->context->channels;
-	if (!this->audio_bits || !this->audio_sample_rate || !this->audio_channels) {
-	  xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
-	          _("ffmpeg_audio_dec: cannot read codec parameters from packet (error=%d)\n"), ret);
-
-	  /* We can't use this packet, so we must discard it
-	   * and wait for another one. */
-	  this->size = 0;
-	  return;
-	}
-      }
-      this->output_open = (this->stream->audio_out->open) (this->stream->audio_out,
-        this->stream, this->audio_bits, this->audio_sample_rate,
-        _x_ao_channels2mode(this->audio_channels));
-    }
-
-    /* if the audio still isn't open, bail */
-    if (!this->output_open)
-      return;
-
-    if (buf->decoder_flags & BUF_FLAG_FRAME_END)  { /* time to decode a frame */
+    if (this->parser_context || buf->decoder_flags & BUF_FLAG_FRAME_END)  { /* time to decode a frame */
 
       offset = 0;
 
@@ -400,24 +451,14 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
 
       while (this->size>0) {
         decode_buffer_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
-#if AVAUDIO > 2
-	av_init_packet (&avpkt);
-	avpkt.data = (uint8_t *)&this->buf[offset];
-	avpkt.size = this->size;
-	avpkt.flags = AV_PKT_FLAG_KEY;
-	bytes_consumed = avcodec_decode_audio3 (this->context,
-						(int16_t *)this->decode_buffer,
-						&decode_buffer_size, &avpkt);
-#else
-        bytes_consumed = avcodec_decode_audio2 (this->context,
-                                               (int16_t *)this->decode_buffer,
-                                               &decode_buffer_size,
-                                               &this->buf[offset],
-                                               this->size);
-#endif
+
+	bytes_consumed =
+          ff_audio_decode(this->stream->xine, this->context,
+                          this->parser_context,
+                          (int16_t *)this->decode_buffer, &decode_buffer_size,
+                          &this->buf[offset], this->size);
+
         if (bytes_consumed<0) {
-          xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
-                   "ffmpeg_audio_dec: error decompressing audio frame\n");
           this->size=0;
           return;
         } else if (bytes_consumed == 0 && decode_buffer_size == 0) {
@@ -425,6 +466,33 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
             memmove(this->buf, &this->buf[offset], this->size);
           return;
         }
+
+	if (!this->output_open) {
+	  if (!this->audio_bits || !this->audio_sample_rate || !this->audio_channels) {
+	    this->audio_bits = this->context->bits_per_sample;
+	    this->audio_sample_rate = this->context->sample_rate;
+	    this->audio_channels = this->context->channels;
+	  }
+	  if (!this->audio_bits || !this->audio_sample_rate || !this->audio_channels) {
+	    xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+		    _("ffmpeg_audio_dec: cannot read codec parameters from packet\n"));
+	    /* try to decode next packet. */
+	    /* there shouldn't be any output yet */
+	    decode_buffer_size = 0;
+	    /* pts applies only to first audio packet */
+	    buf->pts = 0;
+	  } else {
+	    this->output_open = (this->stream->audio_out->open) (this->stream->audio_out,
+								 this->stream, this->audio_bits, this->audio_sample_rate,
+								 _x_ao_channels2mode(this->audio_channels));
+	    if (!this->output_open) {
+	      xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
+		      "ffmpeg_audio_dec: error opening audio output\n");
+	      this->size = 0;
+	      return;
+	    }
+	  }
+	}
 
         /* dispatch the decoded audio */
         out = 0;
@@ -478,6 +546,7 @@ static void ff_audio_decode_data (audio_decoder_t *this_gen, buf_element_t *buf)
           audio_buffer->num_frames = bytes_to_send / 2 / this->audio_channels;
 
           audio_buffer->vpts = buf->pts;
+
           buf->pts = 0;  /* only first buffer gets the real pts */
           this->stream->audio_out->put_buffer (this->stream->audio_out,
             audio_buffer, this->stream);
@@ -506,14 +575,29 @@ static void ff_audio_reset (audio_decoder_t *this_gen) {
       this->decoder_ok = 0;
     pthread_mutex_unlock (&ffmpeg_lock);
   }
+
+  ff_audio_reset_parser(this);
 }
 
 static void ff_audio_discontinuity (audio_decoder_t *this_gen) {
+
+  ff_audio_decoder_t *this = (ff_audio_decoder_t *) this_gen;
+
+  this->size = 0;
+
+  ff_audio_reset_parser(this);
 }
 
 static void ff_audio_dispose (audio_decoder_t *this_gen) {
 
   ff_audio_decoder_t *this = (ff_audio_decoder_t *) this_gen;
+
+  if (this->parser_context) {
+    pthread_mutex_lock (&ffmpeg_lock);
+    av_parser_close(this->parser_context);
+    this->parser_context = NULL;
+    pthread_mutex_unlock (&ffmpeg_lock);
+  }
 
   if( this->context && this->decoder_ok ) {
     pthread_mutex_lock (&ffmpeg_lock);
