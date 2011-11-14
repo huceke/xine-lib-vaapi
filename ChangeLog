@@ -70,7 +70,8 @@ xine-lib (1.1.90) (Unreleased)
   * Report more video output capabilities via (port)->get_capabilities():
     colour controls, zooming, colour keying.
 
-xine-lib (1.1.??) 2010-??-??
+xine-lib (1.1.20) 2011-11-13
+  * Imagine that there's a large poppy here.
   * Ensure that file and socket descriptors are marked as CLOEXEC.
   * Enable FFmpeg's support for AAC LATM audio.
   * Fix build-time check for dvdnav.
