@@ -30,6 +30,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 
 #include <xine/xine_internal.h>
 #include <xine/xineutils.h>
@@ -39,6 +40,18 @@
 #define AO_OUT_FILE_IFACE_VERSION 9
 
 #define GAP_TOLERANCE        INT_MAX
+
+#ifdef WIN32
+#ifndef S_IWUSR
+#define S_IWUSR 0x0000
+#endif
+#ifndef S_IRGRP
+#define S_IRGRP 0x0000
+#endif
+#ifndef S_IROTH
+#define S_IROTH 0x0000
+#endif
+#endif
 
 /* Taken (hStudlyCapsAndAll) from sox's wavwritehdr */
 
