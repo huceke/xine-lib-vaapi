@@ -169,7 +169,7 @@ static void no_proxy_list_change_cb(void *this_gen, xine_cfg_entry_t *cfg) {
  */
 static int _x_use_proxy(http_input_class_t *this, const char *host) {
   const char *target;
-  char *no_proxy, *domain, *ptr;
+  char *no_proxy, *domain, *ptr = NULL;
   struct hostent *info;
   size_t i = 0, host_len, noprox_len;
 

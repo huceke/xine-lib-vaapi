@@ -41,6 +41,7 @@
 
 #include <xine/xine_internal.h>
 #include <xine/xineutils.h>
+#include "xine_private.h"
 
 static void *audio_decoder_loop (void *stream_gen) {
 
