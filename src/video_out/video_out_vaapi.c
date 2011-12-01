@@ -3187,6 +3187,8 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
       if(!vaapi_check_status(this_gen, vaStatus, "vaPutSurface()"))
         return vaStatus;
     }
+    // workaround by johns from vdrportal.de
+    usleep(1 * 1000);
   }
   return VA_STATUS_SUCCESS;
 }
