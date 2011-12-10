@@ -128,6 +128,7 @@ AC_DEFUN([XINE_INPUT_PLUGINS], [
         ACX_PACKAGE_CHECK([DVDNAV], [0.1.9], [dvdnav-config],
                           [AC_DEFINE([HAVE_DVDNAV], 1, [Define this if you have a suitable version of libdvdnav])],
                           [AC_MSG_RESULT([*** no usable version of libdvdnav found, using internal copy ***])])
+        AC_CHECK_LIB([dvdread], [navRead_DSI], [DVDNAV_LIBS="$DVDNAV_LIBS -ldvdread"], [])
     else
         AC_MSG_RESULT([Using included DVDNAV support])
     fi
