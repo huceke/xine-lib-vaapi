@@ -34,11 +34,11 @@ endif
 
 if ENABLE_V4L
 in_v4l = xineplug_inp_v4l.la
-in_pvr = xineplug_inp_pvr.la
 endif
 
 if ENABLE_V4L2
 in_v4l2 = xineplug_inp_v4l2.la
+in_pvr = xineplug_inp_pvr.la
 endif
 
 if ENABLE_GNOME_VFS

@@ -158,8 +158,8 @@ static void dvbspeed_init (nbc_t *this) {
 #endif
           }
           if (xine_config_lookup_entry (xine, "engine.buffers.video_num_buffers",
-            &entry) && (entry.num_value < 1800)) {
-            config->update_num (config, "engine.buffers.video_num_buffers", 1800);
+            &entry) && (entry.num_value < 800)) {
+            config->update_num (config, "engine.buffers.video_num_buffers", 800);
 #ifdef LOG_DVBSPEED
             printf ("net_buf_ctrl: enlarged video fifo to 1800 buffers\n");
 #endif
