@@ -1363,12 +1363,17 @@ static void vaapi_close(vo_driver_t *this_gen) {
     return;
 
   vaapi_ovl_associate(this_gen, 0, 0);
+
   destroy_glx((vo_driver_t *)this);
 
+  if(va_context->va_context_id != VA_INVALID_ID) {
+    vaStatus = vaDestroyContext(va_context->va_display, va_context->va_context_id);
+    vaapi_check_status(this_gen, vaStatus, "vaDestroyContext()");
+    va_context->va_context_id = VA_INVALID_ID;
+  }
+  
   vaapi_destroy_subpicture(this_gen);
-
   vaapi_destroy_soft_surfaces(this_gen);
-
   vaapi_destroy_render_surfaces(this_gen);
 
   if(va_context->va_config_id != VA_INVALID_ID) {
@@ -1377,12 +1382,6 @@ static void vaapi_close(vo_driver_t *this_gen) {
     va_context->va_config_id = VA_INVALID_ID;
   }
 
-  if(va_context->va_context_id != VA_INVALID_ID) {
-    vaStatus = vaDestroyContext(va_context->va_display, va_context->va_context_id);
-    vaapi_check_status(this_gen, vaStatus, "vaDestroyContext()");
-    va_context->va_context_id = VA_INVALID_ID;
-  }
-  
   vaStatus = vaTerminate(va_context->va_display);
   vaapi_check_status(this_gen, vaStatus, "vaTerminate()");
   va_context->va_display = NULL;
