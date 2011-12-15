@@ -62,6 +62,9 @@ if !WIN32
 in_rtp = xineplug_inp_rtp.la
 endif
 
+if ENABLE_BLURAY
+in_bluray = xineplug_inp_bluray.la
+endif
 
 xineplug_LTLIBRARIES = \
 	xineplug_inp_file.la \
@@ -80,6 +83,7 @@ xineplug_LTLIBRARIES = \
 	xineplug_inp_net.la \
 	$(in_pvr) \
 	$(in_dvb) \
+	$(in_bluray) \
 	xineplug_inp_cdda.la
 
 
@@ -144,3 +148,7 @@ xineplug_inp_smb_la_LIBADD = $(XINE_LIB) $(LIBSMBCLIENT_LIBS) $(LTLIBINTL)
 
 xineplug_inp_pvr_la_SOURCES = input_pvr.c
 xineplug_inp_pvr_la_LIBADD = $(XINE_LIB) $(PTHREAD_LIBS) $(LTLIBINTL)
+
+xineplug_inp_bluray_la_SOURCES = input_bluray.c media_helper.c
+xineplug_inp_bluray_la_LIBADD = $(XINE_LIB) $(LIBBLURAY_LIBS) $(PTHREAD_LIBS) $(LTLIBINTL)
+xineplug_inp_bluray_la_CFLAGS = $(AM_CFLAGS) $(LIBBLURAY_CFLAGS)
