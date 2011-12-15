@@ -18,6 +18,7 @@ AC_DEFUN([XINE_INPUT_PLUGINS], [
     default_enable_vcd=yes
     default_enable_vcdo=no
     default_enable_vdr=yes
+    default_enable_bluray=yes
     default_with_external_dvdnav=no
 
     case "$host_os" in
@@ -160,4 +161,17 @@ AC_DEFUN([XINE_INPUT_PLUGINS], [
     dnl vdr
     XINE_ARG_ENABLE([vdr], [Enable support for the VDR plugin (default: enabled)])
     AM_CONDITIONAL([ENABLE_VDR], [test x"$enable_vdr" != x"no"])
+
+    dnl bluray
+    XINE_ARG_ENABLE([bluray], [Enable BluRay support])
+    if test "x$enable_bluray" != "xno"; then
+        PKG_CHECK_MODULES([LIBBLURAY], [libbluray >= 0.2.1], [have_libbluray=yes], [have_libbluray=no])
+        if test x"$hard_enable_bluray" = x"yes" && test x"$have_libbluray" != x"yes"; then
+            AC_MSG_ERROR([BluRay support requested, but libbluray not found])
+        fi
+        AC_SUBST(LIBBLURAY_CFLAGS)
+        AC_SUBST(LIBBLURAY_LIBS)
+    fi
+    AM_CONDITIONAL(ENABLE_BLURAY, test "x$have_libbluray" = "xyes")
+
 ])

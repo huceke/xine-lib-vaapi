@@ -73,6 +73,7 @@ xine-lib (1.1.90) (Unreleased)
 xine-lib (1.1.21) 2011-??-??
   * mpeg-ts fixes and enhancements
   * Improved syncing of DVB subtitles
+  * BluRay support (requires libbluray)
 
 xine-lib (1.1.20.1) 2011-??-??
   * Various bug fixes.

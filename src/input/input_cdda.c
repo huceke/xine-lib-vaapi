@@ -2451,7 +2451,7 @@ static void free_autoplay_list(cdda_input_class_t *this)
   }
 }
 
-static char ** cdda_class_get_autoplay_list (input_class_t *this_gen,
+static const char * const * cdda_class_get_autoplay_list (input_class_t *this_gen,
 					    int *num_files) {
 
   cdda_input_class_t *this = (cdda_input_class_t *) this_gen;
@@ -2529,7 +2529,7 @@ static char ** cdda_class_get_autoplay_list (input_class_t *this_gen,
 
   free_cdrom_toc(toc);
   if (ip != this->ip) free(ip);
-  return this->autoplaylist;
+  return (const char * const *)this->autoplaylist;
 }
 
 static input_plugin_t *cdda_class_get_instance (input_class_t *cls_gen, xine_stream_t *stream,
