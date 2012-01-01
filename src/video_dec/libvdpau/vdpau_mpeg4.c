@@ -481,7 +481,7 @@ static void video_object_layer( vdpau_mpeg4_decoder_t *this_gen, uint8_t *buf, i
       sequence->picture.vdp_infos.non_intra_quantizer_matrix[mpeg_scan_norm[j]] = default_non_intra_quantizer_matrix[j];
     }
     if ( picture->vdp_infos.quant_type ) {
-      int val, last;
+      int val, last = 0;
       if ( read_bits( &sequence->br, 1 ) ) { /* load_intra_quant_matrix */
         lprintf("load_intra_quant_matrix\n");
         for ( j=0; j<64; ++j ) {

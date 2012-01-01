@@ -95,6 +95,7 @@ struct ff_video_decoder_s {
 
   xine_stream_t    *stream;
   int64_t           pts;
+  int64_t           last_pts;
   uint64_t          pts_tag_mask;
   uint64_t          pts_tag;
   int               pts_tag_counter;
@@ -568,6 +569,9 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
         break;
     }
   }
+
+  /* dont want initial AV_NOPTS_VALUE here */
+  this->context->reordered_opaque = 0;
 
 }
 
@@ -1306,6 +1310,13 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
     uint8_t *current;
     int next_flush;
 
+    /* apply valid pts to first frame _starting_ thereafter only */
+    if (this->pts && !this->context->reordered_opaque) {
+      this->context->reordered_opaque = 
+      this->av_frame->reordered_opaque = ff_tag_pts (this, this->pts);
+      this->pts = 0;
+    }
+
     got_picture = 0;
     if (!flush) {
       current = mpeg_parser_decode_data(this->mpeg_parser,
@@ -1452,8 +1463,11 @@ static void ff_handle_mpeg12_buffer (ff_video_decoder_t *this, buf_element_t *bu
       img->top_field_first   = this->av_frame->top_field_first;
       img->bad_frame = 0;
 
-      img->pts  = this->pts;
-      this->pts = 0;
+      /* get back reordered pts */
+      img->pts = ff_untag_pts (this, this->av_frame->reordered_opaque);
+      ff_check_pts_tagging (this, this->av_frame->reordered_opaque);
+      this->av_frame->reordered_opaque = 0;
+      this->context->reordered_opaque = 0;
 
       if (av_framedisp->repeat_pict)
         img->duration = this->video_step * 3 / 2;
@@ -1859,8 +1873,9 @@ static void ff_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
         ff_handle_preview_buffer(this, buf);
 
       /* decode */
-      if (buf->pts)
-	this->pts = buf->pts;
+      /* PES: each valid pts shall be used only once */
+      if (buf->pts && (buf->pts != this->last_pts))
+	this->last_pts = this->pts = buf->pts;
 
       if ((buf->type & 0xFFFF0000) == BUF_VIDEO_MPEG) {
 	ff_handle_mpeg12_buffer(this, buf);
