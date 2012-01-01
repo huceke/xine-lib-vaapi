@@ -294,7 +294,7 @@ static void fill_vdpau_pictureinfo_h264(video_decoder_t *this_gen, uint32_t slic
 
 }
 
-int check_progressive(video_decoder_t *this_gen, struct decoded_picture *dpic)
+static int check_progressive(video_decoder_t *this_gen, struct decoded_picture *dpic)
 {
   vdpau_h264_decoder_t *this = (vdpau_h264_decoder_t *)this_gen;
   int progressive = 0;
