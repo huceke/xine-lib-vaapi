@@ -47,6 +47,10 @@ AC_DEFUN([XINE_VIDEO_OUT_PLUGINS], [
             default_enable_vdpau=yes
             ;;
 
+        gnu*)
+            default_enable_vdpau=yes
+            ;;
+
         linux*)
             default_enable_dxr3=yes
             default_enable_fb=yes

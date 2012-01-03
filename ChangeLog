@@ -1,3 +1,8 @@
+xine-lib (1.2.1) 2012-??-??
+  * Enable PulseAudio, JACK and VDPAU on the Hurd.
+  * Rewrite of VDPAU OSD handling.
+  * sndio plugin is now buildable.
+
 xine-lib (1.2.0) 2012-01-01
   * Add support for VDR.
   * Add support for VDPAU.
