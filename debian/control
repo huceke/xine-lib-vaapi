@@ -24,7 +24,7 @@ Build-Depends: debhelper (>= 5.0.1), binutils (>= 2.12.90.0.9), pkg-config,
 	libflac-dev, libsdl1.2-dev, libwavpack-dev,
 	libsmbclient-dev, libspeex-dev, libmng-dev,
 	libmad0-dev, libmpcdec-dev, libcdio-dev, libvcdinfo-dev,
-	libdvdnav-dev, libdvdread-dev,
+	libdvdnav-dev, libdvdread-dev, libbluray-dev,
 	zlib1g-dev, w3m, xmlto, librsvg2-bin
 Standards-Version: 3.7.2
 
