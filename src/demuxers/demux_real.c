@@ -540,7 +540,7 @@ static void real_parse_headers (demux_real_t *this) {
 
 	    lprintf("audio version %d detected\n", version);
 
-	    char *fourcc_ptr = "\0\0\0";
+	    const char *fourcc_ptr = "\0\0\0";
 	    switch(version) {
             case 3:
               /* Version 3 header stores fourcc after meta info - cheat by reading backwards from the

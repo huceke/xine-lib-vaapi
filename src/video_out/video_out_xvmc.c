@@ -783,7 +783,7 @@ static void xvmc_update_frame_format (vo_driver_t *this_gen,
     frame->ratio               = ratio;
   }
 
-  xvmc->macroblocks = (xine_macroblocks_t *)&this->macroblocks;
+  xvmc->macroblocks = &this->macroblocks.xine_mc;
   this->macroblocks.num_blocks = 0;
   this->macroblocks.macroblockptr = this->macroblocks.macroblockbaseptr;
   this->macroblocks.xine_mc.blockptr =

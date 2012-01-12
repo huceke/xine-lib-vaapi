@@ -4470,7 +4470,7 @@ msgstr "video_out_xv: Xv luzapena ez dago.\n"
 #: src/video_out/video_out_xcbxv.c:1221 src/video_out/video_out_xv.c:1265
 #: src/video_out/video_out_xxmc.c:2497
 #, c-format
-msgid "%s: could not open Xv port %d - autodetecting\n"
+msgid "%s: could not open Xv port %lu - autodetecting\n"
 msgstr ""
 
 #: src/video_out/video_out_xcbxv.c:1237 src/video_out/video_out_xv.c:1277

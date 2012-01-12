@@ -34,6 +34,7 @@
 #include <xine/xine_internal.h>
 #include <xine/spu.h>
 #include <xine/osd.h>
+
 #define MAX_REGIONS 7
 
 #define SPU_MAX_WIDTH 1920

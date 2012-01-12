@@ -2026,7 +2026,7 @@ static int _x_get_current_frame_data (xine_stream_t *stream,
 				      int flags, int img_size_unknown) {
 
   vo_frame_t *frame;
-  size_t required_size;
+  size_t required_size = 0;
 
   stream->xine->port_ticket->acquire(stream->xine->port_ticket, 0);
   frame = stream->video_out->get_last_frame (stream->video_out);
