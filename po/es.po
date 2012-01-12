@@ -5022,8 +5022,8 @@ msgstr "%s: la extensión Xv  no está presente.\n"
 #: src/video_out/video_out_xcbxv.c:1221 src/video_out/video_out_xv.c:1265
 #: src/video_out/video_out_xxmc.c:2497
 #, c-format
-msgid "%s: could not open Xv port %d - autodetecting\n"
-msgstr "%s: no se pudo abrir el puerto Xv %d - autodetectando\n"
+msgid "%s: could not open Xv port %lu - autodetecting\n"
+msgstr "%s: no se pudo abrir el puerto Xv %lu - autodetectando\n"
 
 #: src/video_out/video_out_xcbxv.c:1237 src/video_out/video_out_xv.c:1277
 #: src/video_out/video_out_xxmc.c:2509

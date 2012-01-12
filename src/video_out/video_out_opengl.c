@@ -229,7 +229,7 @@ typedef void *(*thread_run_t)(void *);
 
 typedef struct {
     /* Name of render backend */
-    char *name;
+    const char * const name;
     /* Finally display current image (needed for Redraw) */
     void (*display)(opengl_driver_t *, opengl_frame_t *);
     /* Upload new image; Returns 0 if failed */
@@ -678,7 +678,7 @@ static int render_image_envtex (opengl_driver_t *this, opengl_frame_t *frame) {
 /*
  * Render setup functions
  */
-static int render_help_verify_ext (opengl_driver_t *this, char *ext) {
+static int render_help_verify_ext (opengl_driver_t *this, const char *ext) {
   int ret = 0;
   const size_t l = strlen (ext);
   const char *e;
@@ -929,7 +929,7 @@ static int render_setup_torus (opengl_driver_t *this) {
 static int render_setup_fp_yuv (opengl_driver_t *this) {
   GLint errorpos;
   int ret;
-  static char *fragprog_yuv =
+  static const char *fragprog_yuv =
     "!!ARBfp1.0\n"
     "ATTRIB tex = fragment.texcoord[0];"
     "PARAM  off = program.env[0];"
@@ -1823,7 +1823,7 @@ static vo_driver_t *opengl_open_plugin (video_driver_class_t *class_gen, const v
   config_values_t      *config  = class->xine->config;
   x11_visual_t         *visual  = (x11_visual_t *) visual_gen;
   opengl_driver_t      *this;
-  char                **render_fun_names;
+  const char          **render_fun_names;
   int                   i;
 
   this = (opengl_driver_t *) calloc(1, sizeof(opengl_driver_t));
