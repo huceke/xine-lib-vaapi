@@ -901,7 +901,6 @@ static void draw_subtitles (dvb_spu_decoder_t * this)
   for ( r=0; r<MAX_REGIONS; r++ ) {
     lprintf("region=%d, visible=%d, osd=%d, empty=%d\n", r, this->dvbsub->page.regions[r].is_visible, this->dvbsub->regions[r].osd?1:0, this->dvbsub->regions[r].empty );
     if ( this->dvbsub->page.regions[r].is_visible && this->dvbsub->regions[r].osd && !this->dvbsub->regions[r].empty ) {
-      this->stream->osd_renderer->set_extent(this->dvbsub->regions[r].osd, SPU_MAX_WIDTH, SPU_MAX_HEIGHT);
       this->stream->osd_renderer->set_position( this->dvbsub->regions[r].osd, this->dvbsub->page.regions[r].x, this->dvbsub->page.regions[r].y );
       this->stream->osd_renderer->show( this->dvbsub->regions[r].osd, this->vpts );
       lprintf("show region = %d\n",r);
