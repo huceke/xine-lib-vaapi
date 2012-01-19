@@ -117,6 +117,12 @@ int  xine_check_version (int major, int minor, int sub) XINE_PROTECTED;
  */
 xine_t *xine_new (void) XINE_PROTECTED;
 
+/* allow the setting of some flags before xine_init
+ * FIXME-ABI: this is currently GLOBAL
+ */
+void xine_set_flags (xine_t *, int) XINE_PROTECTED __attribute__((weak));
+#define XINE_FLAG_NO_WRITE_CACHE		1
+
 /*
  * post_init the xine engine
  */
