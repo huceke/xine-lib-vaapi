@@ -50,24 +50,14 @@
 #  include <libpostproc/postprocess.h>
 #endif
 
+#include "ffmpeg_compat.h"
+
 #define VIDEOBUFSIZE        (128*1024)
 #define SLICE_BUFFER_SIZE   (1194*1024)
 
 #define SLICE_OFFSET_SIZE   128
 
 #define ENABLE_DIRECT_RENDERING
-
-#if LIBAVCODEC_VERSION_MAJOR >= 53 || (LIBAVCODEC_VERSION_MAJOR == 52 && LIBAVCODEC_VERSION_MINOR >= 32)
-#  define AVVIDEO 2
-#else
-#  define AVVIDEO 1
-#  define pp_context	pp_context_t
-#  define pp_mode	pp_mode_t
-#endif
-
-#if LIBAVCODEC_VERSION_MAJOR >= 53 || (LIBAVCODEC_VERSION_MAJOR == 52 && LIBAVCODEC_VERSION_MINOR >= 112)
-#  define DEPRECATED_AVCODEC_THREAD_INIT 1
-#endif
 
 typedef struct ff_video_decoder_s ff_video_decoder_t;
 

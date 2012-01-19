@@ -1,9 +1,9 @@
-xine-lib-1.2 (1.2.0~hg-0) experimental; urgency=low
+xine-lib-1.2 (1.2.1~hg-0) experimental; urgency=low
 
   * Hg snapshot.
   * Adjust for libxine2.
 
- -- Darren Salt <linux@youmustbejoking.demon.co.uk>  Thu, 29 Jul 2010 18:57:56 +0100
+ -- Darren Salt <linux@youmustbejoking.demon.co.uk>  Wed, 18 Jan 2012 21:56:46 +0000
 
 xine-lib (1.1.21~hg-0) unstable; urgency=low
 

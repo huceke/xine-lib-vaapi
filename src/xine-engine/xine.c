@@ -83,6 +83,10 @@
 
 #include "xine_private.h"
 
+/* FIXME-ABI Global variable. Done this way for ABI & API reasons... */
+int _x_flags = 0;
+
+
 static void mutex_cleanup (void *mutex) {
   pthread_mutex_unlock ((pthread_mutex_t *) mutex);
 }
@@ -1740,6 +1744,12 @@ static void config_save_cb (void *this_gen, xine_cfg_entry_t *entry) {
   }
 
   this->save_path = entry->str_value;
+}
+
+void xine_set_flags (xine_t *this, int flags)
+{
+  this = this; /* FIXME-ABI: one day, these will be in xine_t...? */
+  _x_flags = flags;
 }
 
 void xine_init (xine_t *this) {
