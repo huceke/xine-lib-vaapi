@@ -3178,8 +3178,10 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
 
     } else {
 
-      vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->window,
-                   0, 0, width, height,
+      vaStatus = vaPutSurface(va_context->va_display, va_surface_id,
+      		   this->window,
+                   this->sc.displayed_xoffset, this->sc.displayed_yoffset,
+		   this->sc.displayed_width, this->sc.displayed_height,
                    this->sc.output_xoffset, this->sc.output_yoffset,
                    this->sc.output_width, this->sc.output_height,
                    NULL, 0, flags);
@@ -3239,18 +3241,6 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     lprintf("frame format changed\n");
     this->sc.force_redraw = 1;
   }
-
-  /*
-   * tell gui that we are about to display a frame,
-   * ask for offset and output size
-   */
-  this->sc.delivered_height = frame->height;
-  this->sc.delivered_width  = frame->width;
-  this->sc.delivered_ratio  = frame->ratio;
-  this->sc.crop_left        = frame->vo_frame.crop_left;
-  this->sc.crop_right       = frame->vo_frame.crop_right;
-  this->sc.crop_top         = frame->vo_frame.crop_top;
-  this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
 
   /*
    * tell gui that we are about to display a frame,
