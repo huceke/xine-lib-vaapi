@@ -91,5 +91,9 @@
 #  define AVAUDIO 2
 #endif
 
+/* AVFrame.age */
+#if !(LIBAVCODEC_VERSION_MAJOR >= 53 && LIBAVCODEC_VERSION_MAJOR >= 28 && LIBAVCODEC_VERSION_MICRO >= 1)
+#  define AVFRAMEAGE 1
+#endif
 
 #endif /* XINE_AVCODEC_COMPAT_H */
