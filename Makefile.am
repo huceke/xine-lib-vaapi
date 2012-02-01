@@ -12,7 +12,7 @@ SUBDIRS = doc m4 po misc include lib src win32 contrib
 
 DEBFILES = debian/README.Debian debian/changelog debian/control \
 	debian/copyright debian/rules debian/compat \
-	debian/shlibdeps.sh debian/libxine-dev.install debian/libxine1.install
+	debian/shlibdeps.sh debian/libxine2-dev.install debian/libxine1.install
 
 EXTRA_DIST = config.rpath autogen.sh \
 	     configure \
