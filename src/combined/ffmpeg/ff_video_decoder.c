@@ -1615,7 +1615,21 @@ static void ff_reset (video_decoder_t *this_gen) {
   this->size = 0;
 
   if(this->context && this->decoder_ok)
+  {
+    xine_list_iterator_t it;
+    AVFrame *av_frame;
+
     avcodec_flush_buffers(this->context);
+
+    /* frame garbage collector here - workaround for buggy ffmpeg codecs that
+     * don't release their DR1 frames */
+    while( (it = xine_list_front(this->dr1_frames)) != NULL )
+    {
+      av_frame = (AVFrame *)xine_list_get_value(this->dr1_frames, it);
+      release_buffer(this->context, av_frame);
+    }
+    xine_list_clear(this->dr1_frames);
+  }
 
   if (this->is_mpeg12)
     mpeg_parser_reset(this->mpeg_parser);
