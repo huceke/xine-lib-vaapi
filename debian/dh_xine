@@ -63,7 +63,7 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 
   foreach my $suffix (@suffix) {
     delsubstvar($package, "xine-$suffix:Depends");
-    addsubstvar ($package, "xine-$suffix:Depends", "libxine1-$suffix");
+    addsubstvar ($package, "xine-$suffix:Depends", "libxine2-$suffix");
   }
 }
 

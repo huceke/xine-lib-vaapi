@@ -25,7 +25,8 @@ EXTRA_DIST = config.rpath autogen.sh \
 	     missing \
 	     depcomp
 
-CONFIG_CLEAN_FILES = libtool
+CLEANFILES = a.out
+CONFIG_CLEAN_FILES = libtool po/Makevars.extra
 
 dist_doc_DATA = COPYING NEWS README TODO CREDITS ChangeLog
 

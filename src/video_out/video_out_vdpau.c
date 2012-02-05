@@ -580,11 +580,11 @@ static void vdpau_overlay_blend (vo_driver_t *this_gen, vo_frame_t *frame_gen, v
   vdpau_overlay_t *ovl = &this->overlays[i];
 
   if (i >= this->old_num_ovls ||
-      !ovl->use_dirty_rect ||
-      ovl->render_surface.surface == VDP_INVALID_HANDLE ||
-      voovl->rle ||
-      ovl->x != voovl->x || ovl->y != voovl->y ||
-      ovl->width != voovl->width || ovl->height != voovl->height)
+      (ovl->use_dirty_rect &&
+        (ovl->render_surface.surface == VDP_INVALID_HANDLE ||
+        voovl->rle ||
+        ovl->x != voovl->x || ovl->y != voovl->y ||
+        ovl->width != voovl->width || ovl->height != voovl->height)))
     ovl->use_dirty_rect = 0;
 
   ovl->ovl = voovl;
@@ -614,7 +614,7 @@ static void vdpau_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen)
   int i;
   for (i = 0; i < this->old_num_ovls; ++i) {
     vdpau_overlay_t *ovl = &this->overlays[i];
-    if (!ovl->use_dirty_rect) {
+    if (i >= this->num_ovls || !ovl->use_dirty_rect) {
       lprintf("overlay[%d] free render surface %d\n", i, (int)ovl->render_surface.surface);
       vdpau_free_output_surface(this, &ovl->render_surface);
     }
