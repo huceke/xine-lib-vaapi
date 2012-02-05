@@ -1,7 +1,12 @@
-xine-lib (1.2.1) 2012-??-??
+xine-lib (1.2.1.1) 2012-??-??
+  * Fix musepack decoder compilation if libmpcdec headers aren't available.
+
+xine-lib (1.2.1) 2012-02-04
+  * The "I'm at Tyneside LUG" release.
   * Enable PulseAudio, JACK and VDPAU on the Hurd.
   * Rewrite of VDPAU OSD handling.
   * sndio plugin is now buildable.
+  * Various bug fixes.
 
 xine-lib (1.2.0) 2012-01-01
   * Add support for VDR.
