@@ -1617,7 +1617,7 @@ static void vaapi_property_callback (void *property_gen, xine_cfg_entry_t *entry
   lprintf("vaapi_property_callback property=%d, value=%d\n", property->type, entry->num_value );
 
   VAStatus vaStatus = vaSetDisplayAttributes(va_context->va_display, &attr, 1);
-  vaapi_check_status((vo_driver_t *)this, vaStatus, "vaSetDisplayAttributes()");
+  //vaapi_check_status((vo_driver_t *)this, vaStatus, "vaSetDisplayAttributes()");
 
   vaapi_show_display_props((vo_driver_t*)this);
 
@@ -1760,7 +1760,7 @@ static void vaapi_set_background_color(vo_driver_t *this_gen) {
   attr.value = 0x000000;
 
   vaStatus = vaSetDisplayAttributes(va_context->va_display, &attr, 1);
-  vaapi_check_status(this_gen, vaStatus, "vaSetDisplayAttributes()");
+  //vaapi_check_status(this_gen, vaStatus, "vaSetDisplayAttributes()");
 }
 
 static VAStatus vaapi_destroy_render_surfaces(vo_driver_t *this_gen) {
@@ -1840,10 +1840,12 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
 
     va_surface->index = i;
 
-    vaStatus = vaPutImage(va_context->va_display, va_soft_surface_ids[i], va_soft_images[i].image_id,
+    if(!va_context->is_bound) {
+      vaStatus = vaPutImage(va_context->va_display, va_soft_surface_ids[i], va_soft_images[i].image_id,
                0, 0, va_soft_images[i].width, va_soft_images[i].height,
                0, 0, va_soft_images[i].width, va_soft_images[i].height);
-    vaapi_check_status(this_gen, vaStatus, "vaPutImage()");
+      vaapi_check_status(this_gen, vaStatus, "vaPutImage()");
+    }
 #ifdef DEBUG_SURFACE
     printf("vaapi_init_soft_surfaces 0x%08x\n", va_soft_surface_ids[i]);
 #endif
@@ -1967,7 +1969,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
 
       VAImage va_image;
       vaStatus = vaapi_create_image(va_context->driver, va_surface_ids[i], &va_image, width, height, 1);
-      if(vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()")) {
+      if(vaapi_check_status(va_context->driver, vaStatus, "vaapi_create_image()") && !va_context->is_bound) {
         vaStatus = vaPutImage(va_context->va_display, va_surface_ids[i], va_image.image_id,
                               0, 0, va_image.width, va_image.height,
                               0, 0, va_image.width, va_image.height);
@@ -3011,6 +3013,47 @@ static void yv12_to_nv12(const uint8_t *y_src, int y_src_pitch,
   }
 }
 
+static void yuy2_to_nv12(const uint8_t *src_yuy2_map, int yuy2_pitch, 
+                         uint8_t *y_dst,  int y_dst_pitch,
+                         uint8_t *uv_dst, int uv_dst_pitch,
+                         int src_width, int src_height, 
+                         int dst_width, int dst_height,
+                         int dst_data_size) {
+
+  int height  = (src_height > dst_height) ? dst_height : src_height;
+  int width   = (src_width > dst_width) ? dst_width : src_width;
+
+  int y, x;
+  int uv_dst_size = dst_height * uv_dst_pitch / 2;
+
+  const uint8_t *yuy2_map = src_yuy2_map;
+  for(y = 0; y < height; y++) {
+    uint8_t *y_dst_tmp = y_dst;
+    const uint8_t *yuy2_src_tmp = yuy2_map;
+    for(x = 0; x < width / 2; x++) {
+      *(y_dst_tmp++   ) = *(yuy2_src_tmp++);
+      yuy2_src_tmp++;
+      *(y_dst_tmp++   ) = *(yuy2_src_tmp++);
+      yuy2_src_tmp++;
+    }
+    y_dst += y_dst_pitch;
+    yuy2_map += yuy2_pitch;
+  }
+
+  yuy2_map = src_yuy2_map;
+  uint8_t *uv_dst_tmp = uv_dst;
+  for(y = 0; y < height; y++) {
+    for(x = 0; x < width; x++) {
+      *(uv_dst_tmp + (height*width/4) ) = (yuy2_map + (height*width/2));
+      *(uv_dst_tmp + (height*width/4) + 2 ) = (yuy2_map + (height*width/2) + 2);
+    }
+    uv_dst += uv_dst_pitch / 2;
+    yuy2_map += yuy2_pitch;
+  }
+
+}
+
+
 static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *frame_gen, 
                                              VAImage *va_image, VASurfaceID va_surface_id) {
   vaapi_driver_t     *this            = (vaapi_driver_t *) this_gen;
@@ -3095,22 +3138,28 @@ static VAStatus vaapi_software_render_frame(vo_driver_t *this_gen, vo_frame_t *f
 
     } else if (va_image->format.fourcc == VA_FOURCC( 'N', 'V', '1', '2' )) {
       lprintf("vaapi_software_render_frame yuy2 -> nv12 convert\n");
-      printf("yuy2 -> nv12 convert missing\n");
+
+      yuy2_to_nv12(frame_gen->base[0], frame_gen->pitches[0],
+                   (uint8_t *)p_base + va_image->offsets[0], va_image->pitches[0],
+                   (uint8_t *)p_base + va_image->offsets[1], va_image->pitches[1],
+                   frame_gen->width, frame_gen->height, 
+                   va_image->width,  va_image->height, 
+                   va_image->data_size);
     }
 
   }
 
   vaStatus = vaUnmapBuffer(va_context->va_display, va_image->buf);
-  vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()");
+  if(!vaapi_check_status(this_gen, vaStatus, "vaUnmapBuffer()"))
+    return vaStatus;
 
   if(!va_context->is_bound) {
     vaStatus = vaPutImage(va_context->va_display, va_surface_id, va_image->image_id,
                         0, 0, va_image->width, va_image->height,
                         0, 0, va_image->width, va_image->height);
+    if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
+      return vaStatus;
   }
-
-  if(!vaapi_check_status(va_context->driver, vaStatus, "vaPutImage()"))
-    return vaStatus;
 
   return VA_STATUS_SUCCESS;
 }
@@ -3178,10 +3227,9 @@ static VAStatus vaapi_hardware_render_frame (vo_driver_t *this_gen, vo_frame_t *
 
     } else {
 
-      vaStatus = vaPutSurface(va_context->va_display, va_surface_id,
-      		   this->window,
+      vaStatus = vaPutSurface(va_context->va_display, va_surface_id, this->window,
                    this->sc.displayed_xoffset, this->sc.displayed_yoffset,
-		   this->sc.displayed_width, this->sc.displayed_height,
+                   this->sc.displayed_width, this->sc.displayed_height,
                    this->sc.output_xoffset, this->sc.output_yoffset,
                    this->sc.output_width, this->sc.output_height,
                    NULL, 0, flags);
@@ -3491,8 +3539,8 @@ static int vaapi_set_property (vo_driver_t *this_gen, int property, int value) {
     attr.value  = value;
 
     if(va_context && va_context->valid_context) {
-      VAStatus vaStatus = vaSetDisplayAttributes(va_context->va_display, &attr, 1);
-      vaapi_check_status((vo_driver_t *)this, vaStatus, "vaSetDisplayAttributes()");
+      vaSetDisplayAttributes(va_context->va_display, &attr, 1);
+      //vaapi_check_status((vo_driver_t *)this, vaStatus, "vaSetDisplayAttributes()");
     }
 
     if (this->props[property].entry)
