@@ -129,6 +129,17 @@
 #define USE_COND_TIMEDWAIT
 #endif
 
+#define LOCKDISPLAY 
+
+#ifdef LOCKDISPLAY
+#define DO_LOCKDISPLAY          XLockDisplay(guarded_display)
+#define DO_UNLOCKDISPLAY        XUnlockDisplay(guarded_display)
+static Display *guarded_display;
+#else
+#define DO_LOCKDISPLAY
+#define DO_UNLOCKDISPLAY
+#endif
+
 #define RECT_IS_EQ(a, b) ((a).x1 == (b).x1 && (a).y1 == (b).y1 && (a).x2 == (b).x2 && (a).y2 == (b).y2)
 
 static const char *const scaling_level_enum_names[] = {
@@ -326,13 +337,13 @@ static int guarded_avcodec_decode_video2(vo_frame_t *frame_gen, AVCodecContext *
   if(this->guarded_render) {
     lprintf("guarded_avcodec_decode_video2 enter\n");
     pthread_mutex_lock(&this->vaapi_lock);
-    //XLockDisplay( this->display );
+    //DO_LOCKDISPLAY;
   }
 
   len = avcodec_decode_video2 (avctx, picture, got_picture_ptr, avpkt);
 
   if(this->guarded_render) {
-    //XUnlockDisplay( this->display );
+    //DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
     lprintf("guarded_avcodec_decode_video2 exit\n");
   }
@@ -352,13 +363,13 @@ static int guarded_avcodec_decode_video(vo_frame_t *frame_gen, AVCodecContext *a
   if(this->guarded_render) {
     lprintf("guarded_avcodec_decode_video enter\n");
     pthread_mutex_lock(&this->vaapi_lock);
-    //XLockDisplay( this->display );
+    //DO_LOCKDISPLAY;
   }
 
   len = avcodec_decode_video (avctx, picture, got_picture_ptr, buf, buf_size);
 
   if(this->guarded_render) {
-    //XUnlockDisplay( this->display );
+    //DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
     lprintf("guarded_avcodec_decode_video exit\n");
   }
@@ -443,7 +454,7 @@ static void render_vaapi_surface(vo_frame_t *frame_gen, ff_vaapi_surface_t *va_s
     return;
 
   pthread_mutex_lock(&this->vaapi_lock);
-  //XLockDisplay( this->display );
+  //DO_LOCKDISPLAY;
 
   accel->index = va_surface->index;
 
@@ -452,7 +463,7 @@ static void render_vaapi_surface(vo_frame_t *frame_gen, ff_vaapi_surface_t *va_s
   printf("render_vaapi_surface 0x%08x\n", va_surface->va_surface_id);
 #endif
 
-  //XUnlockDisplay( this->display );
+  //DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&this->vaapi_lock);
 }
 
@@ -1607,7 +1618,7 @@ static void vaapi_property_callback (void *property_gen, xine_cfg_entry_t *entry
   ff_vaapi_context_t  *va_context = this->va_context;
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  DO_LOCKDISPLAY;
 
   VADisplayAttribute attr;
 
@@ -1621,7 +1632,7 @@ static void vaapi_property_callback (void *property_gen, xine_cfg_entry_t *entry
 
   vaapi_show_display_props((vo_driver_t*)this);
 
-  XUnlockDisplay(this->display);
+  DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&this->vaapi_lock);
 }
 
@@ -2028,13 +2039,13 @@ static VAStatus vaapi_init(vo_frame_t *frame_gen, int va_profile, int width, int
 
   if(!this->guarded_render) {
     pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay(this->display);
+    DO_LOCKDISPLAY;
   }
 
   vaStatus = vaapi_init_internal(this_gen, va_profile, width, height, softrender);
 
   if(!this->guarded_render) {
-    XUnlockDisplay(this->display);
+    DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
   }
 
@@ -2235,11 +2246,11 @@ static void vaapi_overlay_begin (vo_driver_t *this_gen,
     lprintf("vaapi_overlay_begin chaned %d\n", changed);
 
     pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay(this->display);
+    DO_LOCKDISPLAY;
 
     vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
 
-    XUnlockDisplay(this->display);
+    DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
   }
 }
@@ -2536,11 +2547,11 @@ static void vaapi_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   /* Apply OSD layer. */
   if(va_context->valid_context) {
     pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay(this->display);
+    DO_LOCKDISPLAY;
 
     vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
 
-    XUnlockDisplay(this->display);
+    DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
   }
 }
@@ -2612,7 +2623,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
       va_surface->va_surface_id, this->width, this->height);
 
   pthread_mutex_lock(&driver->vaapi_lock);
-  XLockDisplay(driver->display);
+  DO_LOCKDISPLAY;
 
   int width = va_context->width;
   int height = va_context->height;
@@ -2722,7 +2733,7 @@ static void vaapi_provide_standard_frame_data (vo_frame_t *orig, xine_current_fr
   }
 
 error:
-  XUnlockDisplay(driver->display);
+  DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&driver->vaapi_lock);
 }
 
@@ -2756,7 +2767,7 @@ static void vaapi_duplicate_frame_data (vo_frame_t *this_gen, vo_frame_t *origin
   }
 
   pthread_mutex_lock(&driver->vaapi_lock);
-  XLockDisplay(driver->display);
+  DO_LOCKDISPLAY;
 
   VAImage   va_image_orig;
   VAImage   va_image_this;
@@ -2835,7 +2846,7 @@ error:
   vaapi_destroy_image(va_context->driver, &va_image_orig);
   vaapi_destroy_image(va_context->driver, &va_image_this);
 
-  XUnlockDisplay(driver->display);
+  DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&driver->vaapi_lock);
 }
 
@@ -2850,7 +2861,7 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
   lprintf("vaapi_update_frame_format\n");
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  DO_LOCKDISPLAY;
 
   lprintf("vaapi_update_frame_format %s %s width %d height %d\n", 
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
@@ -2917,7 +2928,7 @@ static void vaapi_update_frame_format (vo_driver_t *this_gen,
     }
   }
 
-  XUnlockDisplay(this->display);
+  DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&this->vaapi_lock);
 
   frame->ratio  = ratio;
@@ -3304,7 +3315,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   this->sc.crop_bottom      = frame->vo_frame.crop_bottom;
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  DO_LOCKDISPLAY;
 
   lprintf("vaapi_display_frame %s frame->width %d frame->height %d va_context->sw_width %d va_context->sw_height %d valid_context %d\n",
         (frame->format == XINE_IMGFMT_VAAPI) ? "XINE_IMGFMT_VAAPI" : ((frame->format == XINE_IMGFMT_YV12) ? "XINE_IMGFMT_YV12" : "XINE_IMGFMT_YUY2") ,
@@ -3337,7 +3348,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
       vaapi_ovl_associate(this_gen, frame_gen->format, this->has_overlay);
   }
 
-  XUnlockDisplay(this->display);
+  DO_UNLOCKDISPLAY;
   pthread_mutex_unlock(&this->vaapi_lock);
 
   vaapi_redraw_needed (this_gen);
@@ -3347,7 +3358,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     return;
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  DO_LOCKDISPLAY;
 
   /* initialize opengl rendering */
   if(this->opengl_render && this->init_opengl_render &&  va_context->valid_context) {
@@ -3469,7 +3480,7 @@ static void vaapi_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
     }
   }
 
-  XUnlockDisplay(this->display);
+  DO_UNLOCKDISPLAY;
 
   frame->vo_frame.free( frame_gen );
 
@@ -3605,11 +3616,11 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 
   case XINE_GUI_SEND_EXPOSE_EVENT: {
     pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay( this->display );
+    DO_LOCKDISPLAY;
     lprintf("XINE_GUI_SEND_EXPOSE_EVENT:\n");
     this->sc.force_redraw = 1;
     this->init_opengl_render = 1;
-    XUnlockDisplay( this->display );
+    DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
   }
   break;
@@ -3621,7 +3632,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
 
   case XINE_GUI_SEND_DRAWABLE_CHANGED: {
     pthread_mutex_lock(&this->vaapi_lock);
-    XLockDisplay( this->display );
+    DO_LOCKDISPLAY;
     lprintf("XINE_GUI_SEND_DRAWABLE_CHANGED\n");
 
     this->drawable = (Drawable) data;
@@ -3631,7 +3642,7 @@ static int vaapi_gui_data_exchange (vo_driver_t *this_gen,
     this->sc.force_redraw = 1;
     this->init_opengl_render = 1;
 
-    XUnlockDisplay( this->display );
+    DO_UNLOCKDISPLAY;
     pthread_mutex_unlock(&this->vaapi_lock);
   }
   break;
@@ -3663,7 +3674,7 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
   lprintf("vaapi_dispose\n");
 
   pthread_mutex_lock(&this->vaapi_lock);
-  XLockDisplay(this->display);
+  DO_LOCKDISPLAY;
 
   this->ovl_yuv2rgb->dispose(this->ovl_yuv2rgb);
   this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
@@ -3684,7 +3695,7 @@ static void vaapi_dispose (vo_driver_t *this_gen) {
     free(va_soft_images);
 
   XDestroyWindow(this->display, this->window);
-  XUnlockDisplay(this->display);
+  DO_UNLOCKDISPLAY;
 
   pthread_mutex_unlock(&this->vaapi_lock);
   pthread_mutex_destroy(&this->vaapi_lock);
@@ -3778,6 +3789,10 @@ static vo_driver_t *vaapi_open_plugin (video_driver_class_t *class_gen, const vo
   this->drawable                = visual->d;
 
   this->va_context              = calloc(1, sizeof(ff_vaapi_context_t));
+
+#ifdef LOCKDISPLAY
+  guarded_display     = visual->display;
+#endif
 
   /* number of video frames from config - register it with the default value. */
   int frame_num = config->register_num (config, "engine.buffers.video_num_frames", RENDER_SURFACES, /* default */
