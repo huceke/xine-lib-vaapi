@@ -31,7 +31,7 @@ Standards-Version: 3.7.2
 Package: libxine2-dev
 Architecture: any
 Section: libdevel
-Depends: libxine2 (= ${Source-Version}), libc6-dev, zlib1g-dev | libz-dev, libslang2-dev | slang1-dev, libfreetype6-dev, pkg-config
+Depends: libxine2 (= ${Source-Version}), pkg-config
 Conflicts: xine-ui (<< 0.9.10), libxine-dev
 Replaces: libxine-dev (>= 1.1.90)
 Description: the xine video player library, development packages
