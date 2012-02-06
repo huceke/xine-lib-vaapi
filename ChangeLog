@@ -1,5 +1,6 @@
 xine-lib (1.2.1.1) 2012-??-??
   * Fix musepack decoder compilation if libmpcdec headers aren't available.
+  * Configure tests for xinerama & VideoCD support now soft-fail properly.
 
 xine-lib (1.2.1) 2012-02-04
   * The "I'm at Tyneside LUG" release.
