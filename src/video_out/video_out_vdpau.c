@@ -569,9 +569,10 @@ static void vdpau_overlay_blend (vo_driver_t *this_gen, vo_frame_t *frame_gen, v
                   voovl->video_window_width,voovl->video_window_height,
                   voovl->video_window_x,voovl->video_window_y);
   if (voovl->argb_layer && voovl->argb_layer->buffer)
-    lprintf("overlay[%d] argb %s %dx%d@%d,%d  dirty %d,%d-%d,%d  video %dx%d@%d,%d\n", i,
+    lprintf("overlay[%d] argb %s %dx%d@%d,%d  extend %dx%d, dirty %d,%d-%d,%d  video %dx%d@%d,%d\n", i,
                   voovl->unscaled ? " unscaled ": " scaled ",
                   voovl->width, voovl->height, voovl->x, voovl->y,
+                  voovl->extent_width, voovl->extent_height,
                   voovl->argb_layer->x1, voovl->argb_layer->y1,
                   voovl->argb_layer->x2, voovl->argb_layer->y2,
                   voovl->video_window_width,voovl->video_window_height,
@@ -709,12 +710,12 @@ static void vdpau_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen)
       lprintf("overlay[%d] put %s %d,%d:%d,%d\n", i, ovl->use_dirty_rect ? "dirty argb": "argb", put_rect.x0, put_rect.y0, put_rect.x1, put_rect.y1);
       st = vdp_output_surface_put_bits(ovl->render_surface.surface, &pixmap, &pitch, &put_rect);
       if ( st != VDP_STATUS_OK )
-          fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_put_bits_native failed : %s\n", vdp_get_error_string(st));
+          fprintf(stderr, "vdpau_overlay_end: vdp_output_surface_put_bits_native failed : %s\n", vdp_get_error_string(st));
     } else {
       lprintf("overlay[%d] put ycbcr %d,%d:%d,%d\n", i, put_rect.x0, put_rect.y0, put_rect.x1, put_rect.y1);
       st = vdp_output_surface_put_bits_ycbcr(ovl->render_surface.surface, VDP_YCBCR_FORMAT_V8U8Y8A8, &pixmap, &pitch, &put_rect, NULL);
       if ( st != VDP_STATUS_OK )
-        fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_put_bits_ycbcr failed : %s\n", vdp_get_error_string(st));
+        fprintf(stderr, "vdpau_overlay_end: vdp_output_surface_put_bits_ycbcr failed : %s\n", vdp_get_error_string(st));
     }
 
     if (voovl->rle)
@@ -727,7 +728,7 @@ static void vdpau_overlay_end (vo_driver_t *this_gen, vo_frame_t *frame_gen)
 }
 
 
-static void vdpau_process_overlays (vdpau_driver_t *this, vo_frame_t *frame)
+static void vdpau_process_overlays (vdpau_driver_t *this)
 {
   int novls = this->num_ovls;
   if (!novls) {
@@ -735,100 +736,209 @@ static void vdpau_process_overlays (vdpau_driver_t *this, vo_frame_t *frame)
     return;
   }
 
-  this->ovl_video_dest_rect.x0 = this->sc.output_xoffset;
-  this->ovl_video_dest_rect.y0 = this->sc.output_yoffset;
-  this->ovl_video_dest_rect.x1 = this->sc.output_xoffset + this->sc.output_width;
-  this->ovl_video_dest_rect.y1 = this->sc.output_yoffset + this->sc.output_height;
+  int zoom = (this->sc.delivered_width > this->sc.displayed_width || this->sc.delivered_height > this->sc.displayed_height);
 
-  VdpRect ovl_rects[XINE_VORAW_MAX_OVL];
-  int i;
+  VdpRect vid_src_rect;
+  if (zoom) {
+    /* compute displayed video window coordinates */
+    vid_src_rect.x0 = this->sc.displayed_xoffset;
+    vid_src_rect.y0 = this->sc.displayed_yoffset;
+    vid_src_rect.x1 = this->sc.displayed_width + this->sc.displayed_xoffset;
+    vid_src_rect.y1 = this->sc.displayed_height + this->sc.displayed_yoffset;
+  }
+
+  /* compute video window output coordinates */
+  VdpRect vid_rect;
+  vid_rect.x0 = this->sc.output_xoffset;
+  vid_rect.y0 = this->sc.output_yoffset;
+  vid_rect.x1 = this->sc.output_xoffset + this->sc.output_width;
+  vid_rect.y1 = this->sc.output_yoffset + this->sc.output_height;
+  this->ovl_video_dest_rect = vid_rect;
+
+  VdpRect ovl_rects[XINE_VORAW_MAX_OVL], ovl_src_rects[XINE_VORAW_MAX_OVL];
+  int i, first_visible = 0, nvisible = 0;
   for (i = 0; i < novls; ++i) {
     vdpau_overlay_t *ovl = &this->overlays[i];
 
-    if (ovl->video_window_width > 0 && ovl->video_window_height > 0) {
-      this->ovl_video_dest_rect.x0 = ovl->video_window_x;
-      this->ovl_video_dest_rect.y0 = ovl->video_window_y;
-      this->ovl_video_dest_rect.x1 = ovl->video_window_x + ovl->video_window_width;
-      this->ovl_video_dest_rect.y1 = ovl->video_window_y + ovl->video_window_height;
-    }
+    /* compute unscaled displayed overlay window coordinates */
+    VdpRect ovl_src_rect;
+    ovl_src_rect.x0 = 0;
+    ovl_src_rect.y0 = 0;
+    ovl_src_rect.x1 = ovl->width;
+    ovl_src_rect.y1 = ovl->height;
 
+    /* compute unscaled overlay window output coordinates */
     VdpRect ovl_rect;
     ovl_rect.x0 = ovl->x;
     ovl_rect.y0 = ovl->y;
     ovl_rect.x1 = ovl->x + ovl->width;
     ovl_rect.y1 = ovl->y + ovl->height;
 
+    /* Note: Always coordinates of last overlay osd video window is taken into account */
+    if (ovl->video_window_width > 0 && ovl->video_window_height > 0) {
+      /* compute unscaled osd video window output coordinates */
+      vid_rect.x0 = ovl->video_window_x;
+      vid_rect.y0 = ovl->video_window_y;
+      vid_rect.x1 = ovl->video_window_x + ovl->video_window_width;
+      vid_rect.y1 = ovl->video_window_y + ovl->video_window_height;
+      this->ovl_video_dest_rect = vid_rect;
+    }
+
     if (!ovl->unscaled) {
       double rx, ry;
+      VdpRect clip_rect;
       if (ovl->extent_width > 0 && ovl->extent_height > 0) {
-        rx = (double)ovl->extent_width;
-        ry = (double)ovl->extent_height;
+        if (zoom) {
+          /* compute frame size to extend size scaling factor */
+          rx = (double)ovl->extent_width / (double)this->sc.delivered_width;
+          ry = (double)ovl->extent_height / (double)this->sc.delivered_height;
+
+          /* scale displayed video window coordinates to extend coordinates */
+          clip_rect.x0 = vid_src_rect.x0 * rx + 0.5;
+          clip_rect.y0 = vid_src_rect.y0 * ry + 0.5;
+          clip_rect.x1 = vid_src_rect.x1 * rx + 0.5;
+          clip_rect.y1 = vid_src_rect.y1 * ry + 0.5;
+
+          /* compute displayed size to output size scaling factor */
+          rx = (double)this->sc.output_width / (double)(clip_rect.x1 - clip_rect.x0);
+          ry = (double)this->sc.output_height / (double)(clip_rect.y1 - clip_rect.y0);
+
+        } else {
+          /* compute extend size to output size scaling factor */
+          rx = (double)this->sc.output_width / (double)ovl->extent_width;
+          ry = (double)this->sc.output_height / (double)ovl->extent_height;
+        }
       } else {
-        rx = (double)frame->width;
-        ry = (double)frame->height;
-      }
-      rx = (double)this->sc.output_width / rx;
-      ry = (double)this->sc.output_height / ry;
+        if (zoom)
+          clip_rect = vid_src_rect;
 
-      if (ovl->video_window_width > 0 && ovl->video_window_height > 0) {
-        this->ovl_video_dest_rect.x0 *= rx;
-        this->ovl_video_dest_rect.y0 *= ry;
-        this->ovl_video_dest_rect.x1 *= rx;
-        this->ovl_video_dest_rect.y1 *= ry;
-
-        this->ovl_video_dest_rect.x0 += this->sc.output_xoffset;
-        this->ovl_video_dest_rect.y0 += this->sc.output_yoffset;
-        this->ovl_video_dest_rect.x1 += this->sc.output_xoffset;
-        this->ovl_video_dest_rect.y1 += this->sc.output_yoffset;
+        /* compute displayed size to output size scaling factor */
+        rx = (double)this->sc.output_width / (double)this->sc.displayed_width;
+        ry = (double)this->sc.output_height / (double)this->sc.displayed_height;
       }
 
-      ovl_rect.x0 *= rx;
-      ovl_rect.y0 *= ry;
-      ovl_rect.x1 *= rx;
-      ovl_rect.y1 *= ry;
+      if (zoom) {
+        /* clip overlay window to margins of displayed video window */
+        if (ovl_rect.x0 < clip_rect.x0) {
+          ovl_src_rect.x0 = clip_rect.x0 - ovl_rect.x0;
+          ovl_rect.x0 = clip_rect.x0;
+        }
+        if (ovl_rect.y0 < clip_rect.y0) {
+          ovl_src_rect.y0 = clip_rect.y0 - ovl_rect.y0;
+          ovl_rect.y0 = clip_rect.y0;
+        }
+        if (ovl_rect.x1 > clip_rect.x1) {
+          ovl_src_rect.x1 -= (ovl_rect.x1 - clip_rect.x1);
+          ovl_rect.x1 = clip_rect.x1;
+        }
+        if (ovl_rect.y1 > clip_rect.y1) {
+          ovl_src_rect.y1 -= (ovl_rect.y1 - clip_rect.y1);
+          ovl_rect.y1 = clip_rect.y1;
+        }
+
+        ovl_rect.x0 -= clip_rect.x0;
+        ovl_rect.y0 -= clip_rect.y0;
+        ovl_rect.x1 -= clip_rect.x0;
+        ovl_rect.y1 -= clip_rect.y0;
+      }
+
+      /* scale overlay window coordinates to output window coordinates */
+      ovl_rect.x0 = (double)ovl_rect.x0 * rx + 0.5;
+      ovl_rect.y0 = (double)ovl_rect.y0 * ry + 0.5;
+      ovl_rect.x1 = (double)ovl_rect.x1 * rx + 0.5;
+      ovl_rect.y1 = (double)ovl_rect.y1 * ry + 0.5;
 
       ovl_rect.x0 += this->sc.output_xoffset;
       ovl_rect.y0 += this->sc.output_yoffset;
       ovl_rect.x1 += this->sc.output_xoffset;
       ovl_rect.y1 += this->sc.output_yoffset;
 
+      if (ovl->video_window_width > 0 && ovl->video_window_height > 0) {
+        if (zoom) {
+          /* clip osd video window to margins of displayed video window */
+          if (vid_rect.x0 < clip_rect.x0)
+            vid_rect.x0 = clip_rect.x0;
+          if (vid_rect.y0 < clip_rect.y0)
+            vid_rect.y0 = clip_rect.y0;
+          if (vid_rect.x1 > clip_rect.x1)
+            vid_rect.x1 = clip_rect.x1;
+          if (vid_rect.y1 > clip_rect.y1)
+            vid_rect.y1 = clip_rect.y1;
+
+          vid_rect.x0 -= clip_rect.x0;
+          vid_rect.y0 -= clip_rect.y0;
+          vid_rect.x1 -= clip_rect.x0;
+          vid_rect.y1 -= clip_rect.y0;
+        }
+
+        /* scale osd video window coordinates to output window coordinates */
+        vid_rect.x0 = (double)vid_rect.x0 * rx + 0.5;
+        vid_rect.y0 = (double)vid_rect.y0 * ry + 0.5;
+        vid_rect.x1 = (double)vid_rect.x1 * rx + 0.5;
+        vid_rect.y1 = (double)vid_rect.y1 * ry + 0.5;
+
+        vid_rect.x0 += this->sc.output_xoffset;
+        vid_rect.y0 += this->sc.output_yoffset;
+        vid_rect.x1 += this->sc.output_xoffset;
+        vid_rect.y1 += this->sc.output_yoffset;
+
+        /* take only visible osd video windows into account */
+        if (vid_rect.x0 < vid_rect.x1 && vid_rect.y0 < vid_rect.y1)
+          this->ovl_video_dest_rect = vid_rect;
+      }
+
       this->ovl_changed = 1;
     }
 
     ovl_rects[i] = ovl_rect;
+    ovl_src_rects[i] = ovl_src_rect;
 
-    if (i == 0) {
-      this->ovl_dest_rect = ovl_rect;
-    } else {
-      if (ovl_rect.x0 < this->ovl_dest_rect.x0)
-        this->ovl_dest_rect.x0 = ovl_rect.x0;
-      if (ovl_rect.y0 < this->ovl_dest_rect.y0)
-        this->ovl_dest_rect.y0 = ovl_rect.y0;
-      if (ovl_rect.x1 > this->ovl_dest_rect.x1)
-        this->ovl_dest_rect.x1 = ovl_rect.x1;
-      if (ovl_rect.y1 > this->ovl_dest_rect.y1)
-        this->ovl_dest_rect.y1 = ovl_rect.y1;
+    /* take only visible overlays into account */
+    if (ovl_rect.x0 < ovl_rect.x1 && ovl_rect.y0 < ovl_rect.y1) {
+      /* compute overall output window size */
+      if (nvisible == 0) {
+        first_visible = i;
+        this->ovl_dest_rect = ovl_rect;
+      } else {
+        if (ovl_rect.x0 < this->ovl_dest_rect.x0)
+          this->ovl_dest_rect.x0 = ovl_rect.x0;
+        if (ovl_rect.y0 < this->ovl_dest_rect.y0)
+          this->ovl_dest_rect.y0 = ovl_rect.y0;
+        if (ovl_rect.x1 > this->ovl_dest_rect.x1)
+          this->ovl_dest_rect.x1 = ovl_rect.x1;
+        if (ovl_rect.y1 > this->ovl_dest_rect.y1)
+          this->ovl_dest_rect.y1 = ovl_rect.y1;
+      }
+      ++nvisible;
     }
   }
 
-  if (novls == 1) {
-    this->ovl_src_rect.x1 = this->overlays[0].width;
-    this->ovl_src_rect.y1 = this->overlays[0].height;
-    this->ovl_layer_surface = this->overlays[0].render_surface.surface;
+  if (nvisible == 0) {
+    this->ovl_layer_surface = VDP_INVALID_HANDLE;
+    this->ovl_changed = 0;
+    lprintf("overlays not visible\n");
+    return;
+  } else if (nvisible == 1) {
+    /* we have only one visible overlay object so we can use it directly as overlay layer surface */
+    this->ovl_src_rect = ovl_src_rects[first_visible];
+    this->ovl_layer_surface = this->overlays[first_visible].render_surface.surface;
   } else {
+    this->ovl_src_rect.x0 = 0;
+    this->ovl_src_rect.y0 = 0;
     this->ovl_src_rect.x1 = this->ovl_dest_rect.x1 - this->ovl_dest_rect.x0;
     this->ovl_src_rect.y1 = this->ovl_dest_rect.y1 - this->ovl_dest_rect.y0;
     this->ovl_layer_surface = this->ovl_main_render_surface.surface;
   }
 
-  lprintf("overlay output %dx%d -> %d,%d:%d,%d  video window %d,%d:%d,%d\n",
-                  this->ovl_src_rect.x1, this->ovl_src_rect.y1,
+  lprintf("overlay output %d,%d:%d,%d -> %d,%d:%d,%d  video window %d,%d:%d,%d\n",
+                  this->ovl_src_rect.x0, this->ovl_src_rect.y0, this->ovl_src_rect.x1, this->ovl_src_rect.y1,
                   this->ovl_dest_rect.x0, this->ovl_dest_rect.y0, this->ovl_dest_rect.x1, this->ovl_dest_rect.y1,
                   this->ovl_video_dest_rect.x0, this->ovl_video_dest_rect.y0, this->ovl_video_dest_rect.x1, this->ovl_video_dest_rect.y1);
 
   if (!this->ovl_changed)
     return;
-  if (novls == 1) {
+
+  if (nvisible == 1) {
     this->ovl_changed = 0;
     return;
   }
@@ -843,9 +953,13 @@ static void vdpau_process_overlays (vdpau_driver_t *this, vo_frame_t *frame)
 
   this->ovl_layer_surface = this->ovl_main_render_surface.surface;
 
-  VdpStatus st;
+  /* Clear main render surface if first overlay does not cover hole output window */
+  if (this->ovl_dest_rect.x0 != ovl_rects[first_visible].x0 ||
+                  this->ovl_dest_rect.x1 != ovl_rects[first_visible].x1 ||
+                  this->ovl_dest_rect.y0 != ovl_rects[first_visible].y0 ||
+                  this->ovl_dest_rect.y1 != ovl_rects[first_visible].y1) {
+    lprintf("overlay clear main render output surface %dx%d\n", this->ovl_src_rect.x1, this->ovl_src_rect.y1);
 
-  if (novls > 1 && (this->ovl_dest_rect.x0 != ovl_rects[0].x0 || this->ovl_dest_rect.x1 != ovl_rects[0].x1 || this->ovl_dest_rect.y0 != ovl_rects[0].y0 || this->ovl_dest_rect.y1 != ovl_rects[0].y1)) {
     if (this->ovl_src_rect.x1 > this->ovl_pixmap_size) {
       this->ovl_pixmap_size = this->ovl_src_rect.x1;
       free(this->ovl_pixmap);
@@ -853,35 +967,34 @@ static void vdpau_process_overlays (vdpau_driver_t *this, vo_frame_t *frame)
     } else {
       memset(this->ovl_pixmap, 0, (this->ovl_src_rect.x1 * sizeof(uint32_t)));
     }
-    lprintf("overlay init output surface %dx%d\n", this->ovl_src_rect.x1, this->ovl_src_rect.y1);
+
     uint32_t pitch = 0;
-    st = vdp_output_surface_put_bits( this->ovl_layer_surface, &this->ovl_pixmap, &pitch, &this->ovl_src_rect );
-    if ( st != VDP_STATUS_OK )
-      fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_put_bits (clear) failed : %s\n", vdp_get_error_string(st) );
+    VdpStatus st = vdp_output_surface_put_bits(this->ovl_layer_surface, &this->ovl_pixmap, &pitch, &this->ovl_src_rect);
+    if (st != VDP_STATUS_OK)
+      fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_put_bits (clear) failed : %s\n", vdp_get_error_string(st));
   }
 
+  /* Render all visible overlays into main render surface */
   for (i = 0; i < novls; ++i) {
     vdpau_overlay_t *ovl = &this->overlays[i];
 
-    VdpRect src_rect;
-    src_rect.x0 = 0;
-    src_rect.y0 = 0;
-    src_rect.x1 = ovl->width;
-    src_rect.y1 = ovl->height;
+    if (ovl_rects[i].x0 < ovl_rects[i].x1 && ovl_rects[i].y0 < ovl_rects[i].y1) {
+      /* compensate overall output offset of main render surface */
+      VdpRect render_rect;
+      render_rect.x0 = ovl_rects[i].x0 - this->ovl_dest_rect.x0;
+      render_rect.x1 = ovl_rects[i].x1 - this->ovl_dest_rect.x0;
+      render_rect.y0 = ovl_rects[i].y0 - this->ovl_dest_rect.y0;
+      render_rect.y1 = ovl_rects[i].y1 - this->ovl_dest_rect.y0;
 
-    VdpRect render_rect;
-    render_rect.x0 = ovl_rects[i].x0 - this->ovl_dest_rect.x0;
-    render_rect.x1 = ovl_rects[i].x1 - this->ovl_dest_rect.x0;
-    render_rect.y0 = ovl_rects[i].y0 - this->ovl_dest_rect.y0;
-    render_rect.y1 = ovl_rects[i].y1 - this->ovl_dest_rect.y0;
+      lprintf("overlay[%d] render %d,%d:%d,%d -> %d,%d:%d,%d\n",
+                      i, ovl_rects[i].x0, ovl_rects[i].y0, ovl_rects[i].x1, ovl_rects[i].y1, render_rect.x0, render_rect.y0, render_rect.x1, render_rect.y1);
 
-    lprintf("overlay[%d] render %dx%d -> %d,%d:%d,%d\n", i, src_rect.x1, src_rect.y1, render_rect.x0, render_rect.y0, render_rect.x1, render_rect.y1);
-    VdpOutputSurfaceRenderBlendState *bs = (i > 0) ? &blend: NULL;
-    st = vdp_output_surface_render_output_surface(this->ovl_layer_surface, &render_rect, ovl->render_surface.surface, &src_rect, 0, bs, 0 );
-    if ( st != VDP_STATUS_OK )
-      fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_render_output_surface failed : %s\n", vdp_get_error_string(st));
+      VdpOutputSurfaceRenderBlendState *bs = (i > first_visible) ? &blend: NULL;
+      VdpStatus st = vdp_output_surface_render_output_surface(this->ovl_layer_surface, &render_rect, ovl->render_surface.surface, &ovl_src_rects[i], 0, bs, 0 );
+      if (st != VDP_STATUS_OK)
+        fprintf(stderr, "vdpau_process_overlays: vdp_output_surface_render_output_surface failed : %s\n", vdp_get_error_string(st));
+    }
   }
-
   this->ovl_changed = 0;
 }
 
@@ -1870,12 +1983,12 @@ static void vdpau_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen)
   }
 
   if (this->ovl_changed || redraw_needed)
-    vdpau_process_overlays(this, frame_gen);
+    vdpau_process_overlays(this);
 
   uint32_t layer_count;
   VdpLayer *layer, ovl_layer;
   VdpRect *vid_dest, vid_dest_rect;
-  if ( this->num_ovls ) {
+  if (this->num_ovls && this->ovl_layer_surface != VDP_INVALID_HANDLE) {
     ovl_layer.struct_version = VDP_LAYER_VERSION;
     ovl_layer.source_surface = this->ovl_layer_surface;
     ovl_layer.source_rect = &this->ovl_src_rect;

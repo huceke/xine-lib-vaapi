@@ -1,6 +1,7 @@
 xine-lib (1.2.1.1) 2012-??-??
   * Fix musepack decoder compilation if libmpcdec headers aren't available.
   * Configure tests for xinerama & VideoCD support now soft-fail properly.
+  * The DVB plugin is working again.
 
 xine-lib (1.2.1) 2012-02-04
   * The "I'm at Tyneside LUG" release.
