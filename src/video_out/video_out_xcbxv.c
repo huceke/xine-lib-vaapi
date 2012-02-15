@@ -640,6 +640,8 @@ static void xv_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
 static int xv_get_property (vo_driver_t *this_gen, int property) {
   xv_driver_t *this = (xv_driver_t *) this_gen;
 
+  if ((property < 0) || (property >= VO_NUM_PROPERTIES)) return (0);
+
   switch (property) {
     case VO_PROP_WINDOW_WIDTH:
       this->props[property].value = this->sc.gui_width;
@@ -679,6 +681,8 @@ static void xv_property_callback (void *property_gen, xine_cfg_entry_t *entry) {
 static int xv_set_property (vo_driver_t *this_gen,
 			    int property, int value) {
   xv_driver_t *this = (xv_driver_t *) this_gen;
+
+  if ((property < 0) || (property >= VO_NUM_PROPERTIES)) return 0;
 
   if (this->props[property].atom != XCB_NONE) {
     xcb_xv_get_port_attribute_cookie_t get_attribute_cookie;
@@ -756,6 +760,11 @@ static int xv_set_property (vo_driver_t *this_gen,
 static void xv_get_property_min_max (vo_driver_t *this_gen,
 				     int property, int *min, int *max) {
   xv_driver_t *this = (xv_driver_t *) this_gen;
+
+  if ((property < 0) || (property >= VO_NUM_PROPERTIES)) {
+    *min = *max = 0;
+    return;
+  }
 
   *min = this->props[property].min;
   *max = this->props[property].max;

@@ -1039,6 +1039,10 @@ static int asf_parse_packet_payload_header(demux_asf_t *this, uint32_t p_hdr_siz
 #ifdef LOG
   timestamp = get_le32(this); p_hdr_size += 4;
   duration  = get_le16(this); p_hdr_size += 2;
+#else
+  /* skip the above bytes */
+  this->input->seek (this->input, 6, SEEK_CUR);
+  p_hdr_size += 6;
 #endif
 
   lprintf ("timestamp=%"PRId64", duration=%"PRId64"\n", timestamp, duration);
