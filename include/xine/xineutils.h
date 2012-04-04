@@ -92,6 +92,11 @@ extern "C" {
 #define MM_ACCEL_X86_MMXEXT     0x20000000
 #define MM_ACCEL_X86_SSE        0x10000000
 #define MM_ACCEL_X86_SSE2       0x08000000
+#define MM_ACCEL_X86_SSE3       0x04000000
+#define MM_ACCEL_X86_SSSE3      0x02000000
+#define MM_ACCEL_X86_SSE4       0x01000000
+#define MM_ACCEL_X86_SSE42      0x00800000
+#define MM_ACCEL_X86_AVX        0x00400000
 
 /* powerpc accelerations and features */
 #define MM_ACCEL_PPC_ALTIVEC    0x04000000

@@ -46,9 +46,20 @@ typedef	union {
 			      : /* nothing */ \
 			      : "m" (mem))
 
+/* load dword from memory or gp register */
+#define	mmx_a2r(op,any,reg) \
+	__asm__ __volatile__ (#op " %0, %%" #reg \
+			      : /* nothing */ \
+			      : "g" (any))
+
 #define	mmx_r2m(op,reg,mem) \
 	__asm__ __volatile__ (#op " %%" #reg ", %0" \
 			      : "=m" (mem) \
+			      : /* nothing */ )
+
+#define	mmx_r2a(op,reg,any) \
+	__asm__ __volatile__ (#op " %%" #reg ", %0" \
+			      : "=g" (any) \
 			      : /* nothing */ )
 
 #define	mmx_r2r(op,regs,regd) \
@@ -60,6 +71,8 @@ typedef	union {
 #define	movd_m2r(var,reg)	mmx_m2r (movd, var, reg)
 #define	movd_r2m(reg,var)	mmx_r2m (movd, reg, var)
 #define	movd_r2r(regs,regd)	mmx_r2r (movd, regs, regd)
+#define	movd_a2r(any,reg)	mmx_a2r (movd, any, reg)
+#define	movd_r2a(reg,any)	mmx_r2a (movd, reg, any)
 
 #define	movq_m2r(var,reg)	mmx_m2r (movq, var, reg)
 #define	movq_r2m(reg,var)	mmx_r2m (movq, reg, var)
@@ -234,7 +247,9 @@ typedef	union {
 #define	pminub_r2r(regs,regd)		mmx_r2r (pminub, regs, regd)
 
 #define	pmovmskb(mmreg,reg) \
-	__asm__ __volatile__ ("movmskps %" #mmreg ", %" #reg)
+	__asm__ __volatile__ ("pmovmskb %" #mmreg ", %" #reg)
+#define pmovmskb_r2a(mmreg,regvar) \
+	__asm__ __volatile__ ("pmovmskb %%" #mmreg ", %0" : "=r" (regvar))
 
 #define	pmulhuw_m2r(var,reg)		mmx_m2r (pmulhuw, var, reg)
 #define	pmulhuw_r2r(regs,regd)		mmx_r2r (pmulhuw, regs, regd)
@@ -253,6 +268,12 @@ typedef	union {
 #define	sfence() __asm__ __volatile__ ("sfence\n\t")
 
 typedef	union {
+	int64_t			q[2];	/* Quadword (64-bit) value */
+	uint64_t		uq[2];	/* Unsigned Quadword */
+	short			w[8];	/* 4 Word (16-bit) values */
+	unsigned short		uw[8];	/* 4 Unsigned Word */
+	char			b[16];	/* 8 Byte (8-bit) values */
+	unsigned char		ub[16];	/* 8 Unsigned Byte */
 	float			sf[4];	/* Single-precision (32-bit) value */
 } ATTR_ALIGN(16) sse_t;	/* On a 16 byte (128-bit) boundary */
 
@@ -485,6 +506,22 @@ typedef	union {
 	__asm__ __volatile__ ("ldmxcsr %0" \
 			      : /* nothing */ \
 			      : "X" (mem))
+
+/* SSE2 */
+
+#define movdqa_m2r(var, reg)    mmx_m2r (movdqa, var, reg)
+#define movdqa_r2m(reg, var)    mmx_r2m (movdqa, reg, var)
+#define movdqa_r2r(regs, regd)  mmx_r2r (movdqa, regs, regd)
+
+#define movdqu_m2r(var, reg)    mmx_m2r (movdqu, var, reg)
+#define movdqu_r2m(reg, var)    mmx_r2m (movdqu, reg, var)
+
+#define pshufd_m2r(var, reg, imm)   mmx_m2ri (pshufd, var, reg, imm)
+#define pshufd_r2r(regs, regd, imm)   mmx_r2ri (pshufd, regs, regd, imm)
+
+#define pshuflw_m2r(var, reg, imm)  mmx_m2ri (pshuflw, var, reg, imm)
+#define pshuflw_r2r(regs, regd, imm)  mmx_r2ri (pshuflw, regs, regd, imm)
+
 #endif /*ARCH_X86 */
 
 #endif /*XINE_MMX_H*/

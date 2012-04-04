@@ -46,6 +46,15 @@
 
 #define BLEND_BYTE(dst, src, o) (((((src)-(dst))*(o*0x1111+1))>>16)+(dst))
 
+static void mem_blend8(uint8_t *mem, uint8_t val, uint8_t o, size_t sz)
+{
+  uint8_t *limit = mem + sz;
+  while (mem < limit) {
+    *mem = BLEND_BYTE(*mem, val, o);
+    mem++;
+  }
+}
+
 static void mem_blend16(uint16_t *mem, uint16_t clr, uint8_t o, int len) {
   uint16_t *limit = mem + len;
   while (mem < limit) {
@@ -1044,15 +1053,6 @@ void _x_blend_rgb32 (uint8_t * img, vo_overlay_t * img_overl,
     } else {
       rle = rle_start;		/* y-scaling, reuse the last rle encoded line */
     }
-  }
-}
-
-static void mem_blend8(uint8_t *mem, uint8_t val, uint8_t o, size_t sz)
-{
-  uint8_t *limit = mem + sz;
-  while (mem < limit) {
-    *mem = BLEND_BYTE(*mem, val, o);
-    mem++;
   }
 }
 

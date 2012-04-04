@@ -745,23 +745,41 @@ static void metronom_clock_set_option (metronom_clock_t *this,
 
 static int64_t metronom_get_option (metronom_t *this, int option) {
 
-  if (this->master)
-    return this->master->get_option(this->master, option);
+  int64_t result;
+
+  pthread_mutex_lock (&this->lock);
+
+  if (this->master) {
+    result = this->master->get_option(this->master, option);
+    pthread_mutex_unlock (&this->lock);
+    return result;
+  }
 
   switch (option) {
   case METRONOM_AV_OFFSET:
-    return this->av_offset;
+    result = this->av_offset;
+    break;
   case METRONOM_SPU_OFFSET:
-    return this->spu_offset;
+    result = this->spu_offset;
+    break;
   case METRONOM_FRAME_DURATION:
-    return this->img_duration;
+    result = this->img_duration;
+    break;
   case METRONOM_VPTS_OFFSET:
-    return this->vpts_offset;
+    result = this->vpts_offset;
+    break;
   case METRONOM_PREBUFFER:
-    return this->prebuffer;
+    result = this->prebuffer;
+    break;
+  default:
+    result = 0;
+    xprintf(this->xine, XINE_VERBOSITY_NONE, "unknown option in get_option: %d\n", option);
+    break;
   }
-  xprintf(this->xine, XINE_VERBOSITY_NONE, "unknown option in get_option: %d\n", option);
-  return 0;
+
+  pthread_mutex_unlock (&this->lock);
+
+  return result;
 }
 
 static int64_t metronom_clock_get_option (metronom_clock_t *this, int option) {

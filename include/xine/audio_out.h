@@ -343,7 +343,8 @@ int _x_ao_channels2mode( int channels ) XINE_PROTECTED;
 #define AO_PROP_CLOCK_SPEED    20 /* inform audio_out that speed has changed */
 #define AO_PROP_BUFS_TOTAL     21 /* read-only */
 #define AO_PROP_BUFS_FREE      22 /* read-only */
-#define AO_NUM_PROPERTIES      23
+#define AO_PROP_DRIVER_DELAY   23 /* read-only */
+#define AO_NUM_PROPERTIES      24
 
 /* audio device control ops */
 #define AO_CTRL_PLAY_PAUSE	0
