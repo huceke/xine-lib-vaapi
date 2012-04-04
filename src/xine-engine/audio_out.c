@@ -280,6 +280,8 @@ typedef struct {
 
   sXYData         eq_data_history[EQ_BANDS][EQ_CHANNELS];
 
+  int             last_gap;
+
 } aos_t;
 
 struct audio_fifo_s {
@@ -1166,6 +1168,7 @@ static void *ao_loop (void *this_gen) {
      * calculate gap:
      */
     gap = in_buf->vpts - hw_vpts;
+    this->last_gap = gap;
     lprintf ("hw_vpts : %" PRId64 " buffer_vpts : %" PRId64 " gap : %" PRId64 "\n",
              hw_vpts, in_buf->vpts, gap);
 
@@ -1826,6 +1829,10 @@ static int ao_get_property (xine_audio_port_t *this_gen, int property) {
 
   case AO_PROP_CLOCK_SPEED:
     ret = this->current_speed;
+    break;
+
+  case AO_PROP_DRIVER_DELAY:
+    ret = this->last_gap;
     break;
 
   default:
