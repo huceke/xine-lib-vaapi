@@ -119,6 +119,7 @@ static inline void mmx_yuv2rgb (uint8_t * py, uint8_t * pu, uint8_t * pv, mmx_cs
 {
     static mmx_t mmx_80w = {0x0080008000800080ULL};
     static mmx_t mmx_00ffw = {0x00ff00ff00ff00ffULL};
+    static mmx_t mmx_0002w = {0x0002000200020002ULL};
 
     movq_m2r (*py, mm6);		// mm6 = Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0
     pxor_r2r (mm4, mm4);		// mm4 = 0
@@ -133,10 +134,11 @@ static inline void mmx_yuv2rgb (uint8_t * py, uint8_t * pu, uint8_t * pv, mmx_cs
     psrlw_i2r (8, mm7);			// mm7 =    Y7    Y5    Y3    Y1
 
     movd_m2r (*pv, mm1);		// mm1 = 00 00 00 00 v3 v2 v1 v0
-    psllw_i2r (3, mm6);			// promote precision
+    psllw_i2r (5, mm6);			// promote precision
 
     pmulhw_m2r (csc->Y_coeff, mm6);	// mm6 = luma_rgb even
-    psllw_i2r (3, mm7);			// promote precision
+    paddsw_m2r (mmx_0002w, mm6);	// +0.5 for later rounding
+    psllw_i2r (5, mm7);			// promote precision
 
     punpcklbw_r2r (mm4, mm0);		// mm0 = u3 u2 u1 u0
 
@@ -144,12 +146,13 @@ static inline void mmx_yuv2rgb (uint8_t * py, uint8_t * pu, uint8_t * pv, mmx_cs
     punpcklbw_r2r (mm4, mm1);		// mm1 = v3 v2 v1 v0
 
     pmulhw_m2r (csc->Y_coeff, mm7);	// mm7 = luma_rgb odd
-    psllw_i2r (3, mm0);			// promote precision
+    paddsw_m2r (mmx_0002w, mm7);	// +0.5 for later rounding
+    psllw_i2r (5, mm0);			// promote precision
 
     psubsw_m2r (mmx_80w, mm1);		// v -= 128
     movq_r2r (mm0, mm2);		// mm2 = u3 u2 u1 u0
 
-    psllw_i2r (3, mm1);			// promote precision
+    psllw_i2r (5, mm1);			// promote precision
 
     movq_r2r (mm1, mm4);		// mm4 = v3 v2 v1 v0
 
@@ -168,12 +171,14 @@ static inline void mmx_yuv2rgb (uint8_t * py, uint8_t * pu, uint8_t * pv, mmx_cs
     paddsw_r2r (mm6, mm0);		// mm0 = B6 B4 B2 B0
     paddsw_r2r (mm7, mm3);		// mm3 = B7 B5 B3 B1
 
+    psraw_i2r (2, mm0);			// div round
     packuswb_r2r (mm0, mm0);		// saturate to 0-255
 
 
     pmulhw_m2r (csc->U_green, mm2);	// mm2 = u * u_green
 
 
+    psraw_i2r (2, mm3);			// div round
     packuswb_r2r (mm3, mm3);		// saturate to 0-255
 
 
@@ -197,16 +202,20 @@ static inline void mmx_yuv2rgb (uint8_t * py, uint8_t * pu, uint8_t * pv, mmx_cs
     paddsw_r2r (mm6, mm2);		// mm2 = G6 G4 G2 G0
 
 
+    psraw_i2r (2, mm2);			// div round
     packuswb_r2r (mm2, mm2);		// saturate to 0-255
     paddsw_r2r (mm6, mm1);		// mm1 = R6 R4 R2 R0
 
+    psraw_i2r (2, mm1);			// div round
     packuswb_r2r (mm1, mm1);		// saturate to 0-255
     paddsw_r2r (mm7, mm4);		// mm4 = R7 R5 R3 R1
 
+    psraw_i2r (2, mm4);			// div round
     packuswb_r2r (mm4, mm4);		// saturate to 0-255
     paddsw_r2r (mm7, mm5);		// mm5 = G7 G5 G3 G1
 
 
+    psraw_i2r (2, mm5);			// div round
     packuswb_r2r (mm5, mm5);		// saturate to 0-255
 
 

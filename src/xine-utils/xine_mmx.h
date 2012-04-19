@@ -277,6 +277,7 @@ typedef	union {
 	float			sf[4];	/* Single-precision (32-bit) value */
 } ATTR_ALIGN(16) sse_t;	/* On a 16 byte (128-bit) boundary */
 
+#define FILL_SSE_UW(w) {uw:{w,w,w,w,w,w,w,w}}
 
 #define	sse_i2r(op, imm, reg) \
 	__asm__ __volatile__ (#op " %0, %%" #reg \
@@ -521,6 +522,11 @@ typedef	union {
 
 #define pshuflw_m2r(var, reg, imm)  mmx_m2ri (pshuflw, var, reg, imm)
 #define pshuflw_r2r(regs, regd, imm)  mmx_r2ri (pshuflw, regs, regd, imm)
+
+/* SSSE3 */
+
+#define pmaddubsw_r2r(regs, regd)  mmx_r2r(pmaddubsw, regs, regd)
+
 
 #endif /*ARCH_X86 */
 

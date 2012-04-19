@@ -871,13 +871,13 @@ static off_t dvd_plugin_get_current_pos (input_plugin_t *this_gen){
   dvd_input_plugin_t *this = (dvd_input_plugin_t*)this_gen;
   uint32_t pos=0;
   uint32_t length=1;
-  dvdnav_status_t result;
+  /*dvdnav_status_t result;*/
   trace_print("Called\n");
 
   if(!this || !this->dvdnav) {
     return 0;
   }
-  result = dvdnav_get_position(this->dvdnav, &pos, &length);
+  /*result =*/ dvdnav_get_position(this->dvdnav, &pos, &length);
   return (off_t)pos * (off_t)DVD_BLOCK_SIZE;
 }
 
@@ -912,14 +912,14 @@ static off_t dvd_plugin_get_length (input_plugin_t *this_gen) {
   dvd_input_plugin_t *this = (dvd_input_plugin_t*)this_gen;
   uint32_t pos=0;
   uint32_t length=1;
-  dvdnav_status_t result;
+  /*dvdnav_status_t result;*/
 
   trace_print("Called\n");
 
   if(!this || !this->dvdnav) {
     return 0;
   }
-  result = dvdnav_get_position(this->dvdnav, &pos, &length);
+  /*result =*/ dvdnav_get_position(this->dvdnav, &pos, &length);
   return (off_t)length * (off_t)DVD_BLOCK_SIZE;
 }
 

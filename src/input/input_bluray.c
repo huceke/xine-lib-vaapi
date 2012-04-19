@@ -75,6 +75,15 @@
 
 #define MIN_TITLE_LENGTH  180
 
+#define BLURAY_MNT_PATH "/mnt/bluray"
+#if defined(__sun)
+#define BLURAY_PATH "/vol/dev/aliases/cdrom0"
+#elif defined(__OpenBSD__)
+#define BLURAY_PATH "/dev/rcd0c"
+#else
+#define BLURAY_PATH "/dev/dvd"
+#endif
+
 /* */
 
 typedef struct {
@@ -1636,13 +1645,13 @@ static void *bluray_init_plugin (xine_t *xine, void *data)
 
   this->mountpoint =
     config->register_filename(config, "media.bluray.mountpoint",
-                              "/mnt/bluray", XINE_CONFIG_STRING_IS_DIRECTORY_NAME,
+                              BLURAY_MNT_PATH, XINE_CONFIG_STRING_IS_DIRECTORY_NAME,
                               _("BluRay mount point"),
                               _("Default mount location for BluRay discs."),
                               0, mountpoint_change_cb, (void *) this);
   this->device =
     config->register_filename(config, "media.bluray.device",
-                              "/dev/dvd", XINE_CONFIG_STRING_IS_DIRECTORY_NAME,
+                              BLURAY_PATH, XINE_CONFIG_STRING_IS_DIRECTORY_NAME,
                               _("device used for BluRay playback"),
                               _("The path to the device "
                                 "which you intend to use for playing BluRy discs."),

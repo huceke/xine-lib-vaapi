@@ -324,6 +324,13 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
   if (this->class->choose_speed_over_accuracy)
     this->context->flags2 |= CODEC_FLAG2_FAST;
 
+#ifdef DEPRECATED_AVCODEC_THREAD_INIT
+  if (this->class->thread_count > 1) {
+    if (this->codec->id != CODEC_ID_SVQ3)
+      this->context->thread_count = this->class->thread_count;
+  }
+#endif
+
   pthread_mutex_lock(&ffmpeg_lock);
   if (avcodec_open (this->context, this->codec) < 0) {
     pthread_mutex_unlock(&ffmpeg_lock);
@@ -351,14 +358,13 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
     }
   }
 
+#ifndef DEPRECATED_AVCODEC_THREAD_INIT
   if (this->class->thread_count > 1) {
     if (this->codec->id != CODEC_ID_SVQ3
-#ifndef DEPRECATED_AVCODEC_THREAD_INIT
-	&& avcodec_thread_init(this->context, this->class->thread_count) != -1
-#endif
-	)
+	&& avcodec_thread_init(this->context, this->class->thread_count) != -1)
       this->context->thread_count = this->class->thread_count;
   }
+#endif
 
   this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
 
@@ -817,7 +823,7 @@ static void ff_convert_frame(ff_video_decoder_t *this, vo_frame_t *img) {
       du += img->pitches[1];
       dv += img->pitches[2];
 
-      if (this->context->pix_fmt != PIX_FMT_YUV420P) {
+      if (this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) {
         su += 2*this->av_frame->linesize[1];
         sv += 2*this->av_frame->linesize[2];
       } else {
