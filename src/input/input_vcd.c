@@ -53,6 +53,8 @@
 
 #if defined(__sun)
 #define	CDROM	       "/vol/dev/aliases/cdrom0"
+#elif defined(__OpenBSD__)
+#define CDROM          "/dev/rcd0c"
 #else
 /* for FreeBSD make a link to the right devnode, like /dev/acd0c */
 #define CDROM          "/dev/cdrom"

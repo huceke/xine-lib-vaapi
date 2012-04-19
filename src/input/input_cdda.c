@@ -1357,7 +1357,7 @@ static int _cdda_cddb_send_command(cdda_input_plugin_t *this, char *cmd) {
  * Handle return code od a command result.
  */
 static int _cdda_cddb_handle_code(char *buf) {
-  int  rcode, fdig, sdig, tdig, err;
+  int  rcode, fdig, sdig, /*tdig,*/ err;
 
   err = -999;
 
@@ -1365,7 +1365,7 @@ static int _cdda_cddb_handle_code(char *buf) {
 
     fdig = rcode / 100;
     sdig = (rcode - (fdig * 100)) / 10;
-    tdig = (rcode - (fdig * 100) - (sdig * 10));
+    /*tdig = (rcode - (fdig * 100) - (sdig * 10));*/
 
     /*
     printf(" %d--\n", fdig);

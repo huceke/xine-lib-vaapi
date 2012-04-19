@@ -85,18 +85,9 @@
 */
 
 
-/* debugging feature */
-/* output the value of mm4 at this point which is pink where we will weave */
-/* and green were we are going to bob */
-/* uncomment next line to see this */
-/* #define CHECK_BOBWEAVE */
-
 #if !defined(MASKS_DEFINED)
 #define MASKS_DEFINED
-  static const int64_t __attribute__((__used__)) YMask    = 0x00ff00ff00ff00ffll;
   static const int64_t __attribute__((__used__)) Mask = 0x7f7f7f7f7f7f7f7fll;
-  static const int64_t __attribute__((__used__)) DwordOne = 0x0000000100000001ll;
-  static const int64_t __attribute__((__used__)) DwordTwo = 0x0000000200000002ll;
   static int64_t qwGreedyTwoFrameThreshold;
 #endif
 
@@ -183,14 +174,16 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
           asm volatile(
        /* Figure out what to do with the scanline above the one we just copied.
         * See above for a description of the algorithm.
-	*/
+        * weave if (weave(M) AND (weave(T) OR weave(B)))
+        */
             ".align 8 \n\t"
-            "movq %4, %%mm6			\n\t"
-
             "movq %0, %%mm1			\n\t"     // T1
             "movq %1, %%mm0			\n\t"     // M1
             "movq %2, %%mm3			\n\t"     // B1
             "movq %3, %%mm2			\n\t"     // M0
+
+            "movq %4, %%mm6			\n\t"     // Mask
+
             : /* no output */
             : "m" (*T1), "m" (*M1),
               "m" (*B1), "m" (*M0), "m" (Mask) );
@@ -223,78 +216,70 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 	  * movement
 	  */
 #if defined(IS_SSE)
-            "movq    %%mm0, %%mm4			\n\t"
-            "movq    %%mm2, %%mm5			\n\t"
-            "psubusb %%mm2, %%mm4			\n\t"
-            "psubusb %%mm0, %%mm5			\n\t"
-            "por     %%mm5, %%mm4			\n\t"
-            "psrlw   $1, %%mm4			\n\t"
-            "pavgb   %%mm2, %%mm0			\n\t"
-            "pand    %%mm6, %%mm4			\n\t"
+            "movq    %%mm0, %%mm4		\n\t"
+            "movq    %%mm2, %%mm5		\n\t"
+            "psubusb %%mm2, %%mm4		\n\t"
+            "psubusb %%mm0, %%mm5		\n\t"
+            "por     %%mm5, %%mm4		\n\t"
+            "pavgb   %%mm2, %%mm0		\n\t"
 #elif defined(IS_3DNOW)
-            "movq    %%mm0, %%mm4			\n\t"
-            "movq    %%mm2, %%mm5			\n\t"
-            "psubusb %%mm2, %%mm4			\n\t"
-            "psubusb %%mm0, %%mm5			\n\t"
-            "por     %%mm5, %%mm4			\n\t"
-            "psrlw   $1, %%mm4			\n\t"
-            "pavgusb %%mm2, %%mm0			\n\t"
-            "pand    %%mm6, %%mm4			\n\t"
+            "movq    %%mm0, %%mm4		\n\t"
+            "movq    %%mm2, %%mm5		\n\t"
+            "psubusb %%mm2, %%mm4		\n\t"
+            "psubusb %%mm0, %%mm5		\n\t"
+            "por     %%mm5, %%mm4		\n\t"
+            "pavgusb %%mm2, %%mm0		\n\t"
 #else
-            "movq    %%mm0, %%mm4			\n\t"
-            "psubusb %%mm2, %%mm4			\n\t"
-            "psubusb %%mm0, %%mm2			\n\t"
-            "por     %%mm2, %%mm4			\n\t"
-            "psrlw   $1, %%mm4			\n\t"
-            "pand    %%mm6, %%mm4			\n\t"
+            "movq    %%mm0, %%mm4		\n\t"
+            "psubusb %%mm2, %%mm4		\n\t"
+            "psubusb %%mm0, %%mm2		\n\t"
+            "por     %%mm2, %%mm4		\n\t"
 #endif
-
-            /* if |M1-M0| > Threshold we want dword worth of twos */
-            "pcmpgtb %3, %%mm4			\n\t"
-            "pand    %4, %%mm4			\n\t" /* get rid of sign bit */
-            "pcmpgtd %5, %%mm4			\n\t" /* do we want to bob */
-            "pandn   %6, %%mm4			\n\t"
 
             "movq    %1, %%mm2			\n\t" /* mm2 = T0 */
 
+            /* if |M1-M0| > Threshold we want 0 else dword minus one */
+            "psrlw   $1, %%mm4			\n\t"
+            "pand    %%mm6, %%mm4		\n\t"
+            "pxor    %%mm5, %%mm5		\n\t" // zero
+            "pcmpgtb %3, %%mm4			\n\t"
+            "pcmpeqd %%mm5, %%mm4		\n\t" /* do we want to bob */
+
             /* calculate |T1-T0| put result in mm5 */
-            "movq    %%mm2, %%mm5			\n\t"
-            "psubusb %%mm1, %%mm5			\n\t"
-            "psubusb %%mm2, %%mm1			\n\t"
-            "por     %%mm1, %%mm5			\n\t"
-            "psrlw   $1, %%mm5			\n\t"
-            "pand    %%mm6, %%mm5			\n\t"
+            "movq    %%mm2, %%mm5		\n\t"
+            "psubusb %%mm1, %%mm5		\n\t"
+            "psubusb %%mm2, %%mm1		\n\t"
+            "por     %%mm1, %%mm5		\n\t"
 
-            /* if |T1-T0| > Threshold we want dword worth of ones */
+            "movq    %2, %%mm2			\n\t" /* mm2 = B0 */
+
+            /* if |T1-T0| > Threshold we want 0 else dword minus one */
+            "psrlw   $1, %%mm5			\n\t"
+            "pand    %%mm6, %%mm5		\n\t"
+            "pxor    %%mm1, %%mm1		\n\t" // zero
             "pcmpgtb %3, %%mm5			\n\t"
-            "pand    %%mm6, %%mm5		\n\t" /* get rid of sign bit */
+            "pcmpeqd %%mm1, %%mm5		\n\t"
 
-            "pcmpgtd %5, %%mm5			\n\t"
-            "pandn   %5, %%mm5			\n\t"
-            "paddd   %%mm5, %%mm4			\n\t"
+            /* calculate |B1-B0| put result in mm1 */
+            "movq    %%mm2, %%mm1		\n\t"
+            "psubusb %%mm3, %%mm1		\n\t"
+            "psubusb %%mm2, %%mm3		\n\t"
+            "por     %%mm3, %%mm1		\n\t"
 
-            "movq    %2, %%mm2			\n\t"     /* B0 */
+            /* if |B1-B0| > Threshold we want 0 else dword minus one */
+            "psrlw   $1, %%mm1			\n\t"
+            "pand    %%mm6, %%mm1		\n\t"
+            "pxor    %%mm3, %%mm3		\n\t" // zero
+            "pcmpgtb %3, %%mm1			\n\t"
+            "pcmpeqd %%mm3, %%mm1		\n\t"
 
-            /* calculate |B1-B0| put result in mm5 */
-            "movq    %%mm2, %%mm5			\n\t"
-            "psubusb %%mm3, %%mm5			\n\t"
-            "psubusb %%mm2, %%mm3			\n\t"
-            "por     %%mm3, %%mm5			\n\t"
-            "psrlw   $1, %%mm5			\n\t"
-            "pand    %%mm6, %%mm5			\n\t"
-
-            /* if |B1-B0| > Threshold we want dword worth of ones */
-            "pcmpgtb %3, %%mm5		\n\t"
-            "pand    %%mm6, %%mm5	\n\t"     /* get rid of any sign bit */
-            "pcmpgtd %5, %%mm5			\n\t"
-            "pandn   %5, %%mm5			\n\t"
-            "paddd   %%mm5, %%mm4			\n\t"
-
-            "pcmpgtd %6, %%mm4			\n\t"
+            "por     %%mm1, %%mm5		\n\t"
+            "pand    %%mm5, %%mm4		\n\t"
 
 /* debugging feature
  * output the value of mm4 at this point which is pink where we will weave
- * and green were we are going to bob                                      */
+ * and green where we are going to bob
+ */
 #ifdef CHECK_BOBWEAVE
 #ifdef IS_SSE
             "movntq %%mm4, %0			\n\t"
@@ -303,11 +288,10 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 #endif
 #else
 
-            "movq    %%mm4, %%mm5			\n\t"
-         /* mm4 now is 1 where we want to weave and 0 where we want to bob */
-            "pand    %%mm0, %%mm4			\n\t"
-            "pandn   %%mm7, %%mm5			\n\t"
-            "por     %%mm5, %%mm4			\n\t"
+            /* mm4 now is 1 where we want to weave and 0 where we want to bob */
+            "pand    %%mm4, %%mm0		\n\t"
+            "pandn   %%mm7, %%mm4		\n\t"
+            "por     %%mm0, %%mm4		\n\t"
 #ifdef IS_SSE
             "movntq %%mm4, %0			\n\t"
 #else
@@ -316,7 +300,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 #endif
 
           : "=m" (*Dest2)
-          : "m" (*T0), "m" (*B0), "m" (qwGreedyTwoFrameThreshold), "m" (Mask), "m" (DwordOne), "m" (DwordTwo) );
+          : "m" (*T0), "m" (*B0), "m" (qwGreedyTwoFrameThreshold) );
 
           /* Advance to the next set of pixels. */
           T1 += 8;

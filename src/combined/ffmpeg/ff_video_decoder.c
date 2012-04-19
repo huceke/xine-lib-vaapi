@@ -462,15 +462,6 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
     this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
   }
 
-  if (this->class->thread_count > 1) {
-    if (this->codec->id != CODEC_ID_SVQ3
-#ifndef DEPRECATED_AVCODEC_THREAD_INIT
-        && avcodec_thread_init(this->context, this->class->thread_count) != -1
-#endif
-      )
-      this->context->thread_count = this->class->thread_count;
-  }
-
   /* enable direct rendering by default */
   this->output_format = XINE_IMGFMT_YV12;
 #ifdef ENABLE_DIRECT_RENDERING
@@ -480,6 +471,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 	    _("ffmpeg_video_dec: direct rendering enabled\n"));
   }
+#endif
 
   if( this->class->enable_vaapi ) {
     this->output_format = XINE_IMGFMT_VAAPI;
@@ -489,6 +481,12 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
     this->context->get_format = get_format;
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
 	    _("ffmpeg_video_dec: direct rendering enabled\n"));
+  }
+
+#ifdef DEPRECATED_AVCODEC_THREAD_INIT
+  if (this->class->thread_count > 1) {
+    if (this->codec->id != CODEC_ID_SVQ3)
+      this->context->thread_count = this->class->thread_count;
   }
 #endif
 
@@ -518,6 +516,16 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       return;
     }
   }
+
+#ifndef DEPRECATED_AVCODEC_THREAD_INIT
+  if (this->class->thread_count > 1) {
+    if (this->codec->id != CODEC_ID_SVQ3
+  && avcodec_thread_init(this->context, this->class->thread_count) != -1)
+      this->context->thread_count = this->class->thread_count;
+  }
+#endif
+
+  this->context->skip_loop_filter = skip_loop_filter_enum_values[this->class->skip_loop_filter_enum];
 
   pthread_mutex_unlock(&ffmpeg_lock);
 
@@ -983,7 +991,7 @@ static void ff_convert_frame(ff_video_decoder_t *this, vo_frame_t *img, AVFrame 
       du += img->pitches[1];
       dv += img->pitches[2];
 
-      if (this->context->pix_fmt != PIX_FMT_YUV420P) {
+      if (this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) {
         su += 2*av_frame->linesize[1];
         sv += 2*av_frame->linesize[2];
       } else {
@@ -1193,7 +1201,7 @@ static void ff_handle_special_buffer (ff_video_decoder_t *this, buf_element_t *b
     memcpy(this->context->extradata, buf->decoder_info_ptr[2],
       buf->decoder_info[2]);
 
-  } 
+  }
 #ifdef AVPaletteControl
   else if (buf->decoder_info[1] == BUF_SPECIAL_PALETTE) {
     unsigned int i;
@@ -1215,7 +1223,7 @@ static void ff_handle_special_buffer (ff_video_decoder_t *this, buf_element_t *b
     decoder_palette->palette_changed = 1;
 
   }
-#endif 
+#endif
   else if (buf->decoder_info[1] == BUF_SPECIAL_RV_CHUNK_TABLE) {
     int i;
 

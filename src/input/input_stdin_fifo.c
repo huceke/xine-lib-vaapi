@@ -304,12 +304,9 @@ static input_plugin_t *stdin_class_get_instance (input_class_t *class_gen,
     fh = STDIN_FILENO;
 
   } else if (!strncasecmp (mrl, "fifo:/", 6)) {
-    char *filename;
-
-    filename = (char *) &mrl[5];
     fh = -1;
 
-    lprintf("filename '%s'\n", filename);
+    lprintf("filename '%s'\n", mrl + 5);
 
   } else {
     free (mrl);

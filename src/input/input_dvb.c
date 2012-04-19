@@ -1412,7 +1412,7 @@ static void* epg_data_updater(void *t) {
    EPG OSD of all channels found in the currently tuned stream. */
 static void load_epg_data(dvb_input_plugin_t *this)
 {
-  int table_id;
+  /*int table_id;*/
   char skip_byte;
   int descriptor_id;
   int section_len = 0;
@@ -1455,9 +1455,17 @@ static void load_epg_data(dvb_input_plugin_t *this)
        return;
     }
     n = read(this->tuner->fd_pidfilter[EITFILTER], eit, 3);
-    table_id = getbits(eit, 0, 8);
+    if (n != 3) {
+       xprintf(this->stream->xine,XINE_VERBOSITY_LOG,"Error reading EPG section length\n");
+       break;
+    }
+    /*table_id =*/ getbits(eit, 0, 8);
     section_len = (unsigned int)getbits(eit, 12, 12);
     n = read(this->tuner->fd_pidfilter[EITFILTER], eit + 3, section_len);
+    if (n != section_len) {
+       xprintf(this->stream->xine,XINE_VERBOSITY_LOG,"Error reading EPG section data\n");
+       break;
+    }
 
     service_id = (unsigned int)getbits(eit, 24, 16);
 
@@ -1540,10 +1548,10 @@ static void load_epg_data(dvb_input_plugin_t *this)
         switch(descriptor_id) {
           case 0x4D: { /* simple program info descriptor */
               int name_len;
-              int desc_len;
+              /*int desc_len;*/
 	      xine_cfg_entry_t language;
 
-              desc_len = getbits(eit, 0, 8);
+              /*desc_len =*/ getbits(eit, 0, 8);
 
 	      /* Let's get the EPG data only in the wanted language. */
 
@@ -2491,7 +2499,6 @@ static off_t dvb_plugin_read (input_plugin_t *this_gen,
   uint8_t *buf = buf_gen;
 
   off_t n=0, total=0;
-  int have_mutex=0;
   struct pollfd pfd;
 
   if (!this->tuned_in)
@@ -2504,7 +2511,7 @@ static off_t dvb_plugin_read (input_plugin_t *this_gen,
 #endif
 
   /* protect against channel changes */
-  have_mutex =  pthread_mutex_lock(&this->channel_change_mutex);
+  pthread_mutex_lock(&this->channel_change_mutex);
   total=0;
 
   while (total<len){
