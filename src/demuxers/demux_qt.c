@@ -1640,7 +1640,7 @@ static qt_error parse_trak_atom (qt_trak *trak,
       }
       trak->time_to_sample_table[j].count = 0; /* terminate with zero */
 
-    } else if (current_atom == CTTS_ATOM) {
+    case CTTS_ATOM:
 
       /* TJ. this has the same format as stts. If present, duration here
          means (pts - dts), while the corresponding stts defines dts. */
