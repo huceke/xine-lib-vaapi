@@ -83,6 +83,7 @@ typedef unsigned int qt_atom;
 #define STSC_ATOM QT_ATOM('s', 't', 's', 'c')
 #define STCO_ATOM QT_ATOM('s', 't', 'c', 'o')
 #define STTS_ATOM QT_ATOM('s', 't', 't', 's')
+#define CTTS_ATOM QT_ATOM('c', 't', 't', 's')
 #define STSS_ATOM QT_ATOM('s', 't', 's', 's')
 #define CO64_ATOM QT_ATOM('c', 'o', '6', '4')
 
@@ -169,6 +170,11 @@ typedef enum {
 typedef struct {
   int64_t offset;
   unsigned int size;
+  /* pts actually is dts for reordered video. Edit list and frame
+     duration code relies on that, so keep the offset separately
+     until sending to video fifo.
+     Value is small enough for plain int. */
+  int ptsoffs;
   int64_t pts;
   int keyframe;
   unsigned int media_id;
@@ -304,6 +310,10 @@ typedef struct {
   /* time to sample table */
   unsigned int time_to_sample_count;
   time_to_sample_table_t *time_to_sample_table;
+
+  /* pts to dts timeoffset to sample table */
+  unsigned int timeoffs_to_sample_count;
+  time_to_sample_table_t *timeoffs_to_sample_table;
 
 } qt_trak;
 
@@ -650,6 +660,7 @@ static void free_qt_info(qt_info *info) {
         free(info->traks[i].sync_sample_table);
         free(info->traks[i].sample_to_chunk_table);
         free(info->traks[i].time_to_sample_table);
+        free(info->traks[i].timeoffs_to_sample_table);
         free(info->traks[i].decoder_config);
         for (j = 0; j < info->traks[i].stsd_atoms_count; j++) {
           if (info->traks[i].type == MEDIA_AUDIO) {
@@ -911,6 +922,8 @@ static qt_error parse_trak_atom (qt_trak *trak,
   trak->sample_to_chunk_table = NULL;
   trak->time_to_sample_count = 0;
   trak->time_to_sample_table = NULL;
+  trak->timeoffs_to_sample_count = 0;
+  trak->timeoffs_to_sample_table = NULL;
   trak->frames = NULL;
   trak->frame_count = 0;
   trak->current_frame = 0;
@@ -1626,6 +1639,47 @@ static qt_error parse_trak_atom (qt_trak *trak,
           trak->time_to_sample_table[j].duration);
       }
       trak->time_to_sample_table[j].count = 0; /* terminate with zero */
+
+    } else if (current_atom == CTTS_ATOM) {
+
+      /* TJ. this has the same format as stts. If present, duration here
+         means (pts - dts), while the corresponding stts defines dts. */
+
+      /* there should only be one of these atoms */
+      if (trak->timeoffs_to_sample_table
+          || current_atom_size < 12 || current_atom_size >= UINT_MAX) {
+        last_error = QT_HEADER_TROUBLE;
+        goto free_trak;
+      }
+
+      trak->timeoffs_to_sample_count = _X_BE_32(&trak_atom[i + 8]);
+
+      debug_atom_load("    qt ctts atom (timeoffset-to-sample atom): %d entries\n",
+        trak->timeoffs_to_sample_count);
+
+      if (trak->timeoffs_to_sample_count > (current_atom_size - 12) / 8) {
+        last_error = QT_HEADER_TROUBLE;
+        goto free_trak;
+      }
+
+      trak->timeoffs_to_sample_table = (time_to_sample_table_t *)calloc(
+        trak->timeoffs_to_sample_count+1, sizeof(time_to_sample_table_t));
+      if (!trak->timeoffs_to_sample_table) {
+        last_error = QT_NO_MEMORY;
+        goto free_trak;
+      }
+
+      /* load the pts to dts time offset to sample table */
+      for (j = 0; j < trak->timeoffs_to_sample_count; j++) {
+        trak->timeoffs_to_sample_table[j].count =
+          _X_BE_32(&trak_atom[i + 12 + j * 8 + 0]);
+        trak->timeoffs_to_sample_table[j].duration =
+          _X_BE_32(&trak_atom[i + 12 + j * 8 + 4]);
+        debug_atom_load("      %d: count = %d, duration = %d\n",
+          j, trak->timeoffs_to_sample_table[j].count,
+          trak->timeoffs_to_sample_table[j].duration);
+      }
+      trak->timeoffs_to_sample_table[j].count = 0; /* terminate with zero */
     }
   }
 
@@ -1641,6 +1695,7 @@ free_trak:
   free(trak->sync_sample_table);
   free(trak->sample_to_chunk_table);
   free(trak->time_to_sample_table);
+  free(trak->timeoffs_to_sample_table);
   free(trak->decoder_config);
   if (trak->stsd_atoms) {
     for (i = 0; i < trak->stsd_atoms_count; i++)
@@ -1793,6 +1848,8 @@ static qt_error build_frame_table(qt_trak *trak,
   int64_t current_pts;
   unsigned int pts_index;
   unsigned int pts_index_countdown;
+  unsigned int ptsoffs_index;
+  unsigned int ptsoffs_index_countdown;
   unsigned int audio_frame_counter = 0;
   unsigned int edit_list_media_time;
   int64_t edit_list_duration;
@@ -1827,6 +1884,10 @@ static qt_error build_frame_table(qt_trak *trak,
     pts_index = 0;
     pts_index_countdown =
       trak->time_to_sample_table[pts_index].count;
+    /* used by reordered video */
+    ptsoffs_index = 0;
+    ptsoffs_index_countdown = trak->timeoffs_to_sample_count ?
+      trak->timeoffs_to_sample_table[ptsoffs_index].count : 0;
 
     media_id_counts = xine_xcalloc(trak->stsd_atoms_count, sizeof(int));
     if (!media_id_counts)
@@ -1896,6 +1957,23 @@ static qt_error build_frame_table(qt_trak *trak,
             pts_index_countdown =
               trak->time_to_sample_table[pts_index].count;
           }
+
+          /* offset pts for reordered video */
+          if (ptsoffs_index < trak->timeoffs_to_sample_count) {
+            /* TJ. this is 32 bit signed. All casts necessary for my gcc 4.5.0 */
+            int i = trak->timeoffs_to_sample_table[ptsoffs_index].duration;
+            if ((sizeof (int) > 4) && (i & 0x80000000))
+              i |= ~0xffffffffL;
+            trak->frames[frame_counter].ptsoffs = (int)90000 * i / (int)trak->timescale;
+            ptsoffs_index_countdown--;
+            /* time to refresh countdown? */
+            if (!ptsoffs_index_countdown) {
+              ptsoffs_index++;
+              ptsoffs_index_countdown =
+                trak->timeoffs_to_sample_table[ptsoffs_index].count;
+            }
+          } else
+            trak->frames[frame_counter].ptsoffs = 0;
 
           samples_per_chunk--;
           frame_counter++;
@@ -1991,6 +2069,7 @@ static qt_error build_frame_table(qt_trak *trak,
           trak->frames[j].pts = audio_frame_counter;
           trak->frames[j].pts *= 90000;
           trak->frames[j].pts /= trak->timescale;
+          trak->frames[j].ptsoffs = 0;
 
           /* fetch the alleged chunk size according to the QT header */
           trak->frames[j].size =
@@ -2532,7 +2611,7 @@ static int demux_qt_send_chunk(demux_plugin_t *this_gen) {
         buf->extra_info->input_normpos = (int)( (double) (video_trak->frames[i].offset - this->data_start)
                                                 * 65535 / this->data_size);
       buf->extra_info->input_time = video_trak->frames[i].pts / 90;
-      buf->pts = video_trak->frames[i].pts;
+      buf->pts = video_trak->frames[i].pts + (int64_t)video_trak->frames[i].ptsoffs;
 
       buf->decoder_flags |= BUF_FLAG_FRAMERATE;
       buf->decoder_info[0] = frame_duration;

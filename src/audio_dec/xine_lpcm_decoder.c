@@ -41,6 +41,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <arpa/inet.h> /* htons */
 #include <netinet/in.h> /* ntohs */
 
 #include <xine/xine_internal.h>

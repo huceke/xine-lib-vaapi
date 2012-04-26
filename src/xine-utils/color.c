@@ -319,12 +319,12 @@ static void yuv444_to_yuy2_mmx(const yuv_planes_t *yuv_planes, unsigned char *yu
   int width_mod_8 = yuv_planes->row_width % 8;
   unsigned char *source_plane;
   unsigned char *dest_plane;
-  unsigned char filter[] = {
+  static const mmx_t filter = {ub: {
     0x01, 0x00,
     0x03, 0x00,
     0x03, 0x00,
     0x01, 0x00
-  };
+  }};
   unsigned char shifter[] = {0, 0, 0, 0, 0, 0, 0, 0};
   unsigned char vector[8];
   int block_loops = yuv_planes->row_width / 6;
@@ -344,7 +344,7 @@ static void yuv444_to_yuy2_mmx(const yuv_planes_t *yuv_planes, unsigned char *yu
   /* set up some MMX registers:
    * mm0 = 0, mm7 = color filter */
   pxor_r2r(mm0, mm0);
-  movq_m2r(*filter, mm7);
+  movq_m2r(filter, mm7);
 
   /* copy the Y samples */
   source_plane = yuv_planes->y;
