@@ -109,6 +109,7 @@ void parse_dec_ref_pic_marking(struct buf_reader *buf,
 
 /* here goes the parser implementation */
 
+#if 0
 static void decode_nal(uint8_t **ret, int *len_ret, uint8_t *buf, int buf_len)
 {
   // TODO: rework without copying
@@ -130,6 +131,7 @@ static void decode_nal(uint8_t **ret, int *len_ret, uint8_t *buf, int buf_len)
 
   *len_ret = pos - *ret;
 }
+#endif
 
 #if 0
 static inline void dump_bits(const char *label, const struct buf_reader *buf, int bits)
@@ -269,8 +271,8 @@ struct nal_unit* parse_nal_header(struct buf_reader *buf,
   buf->cur_pos = buf->buf + 1;
   //lprintf("NAL: %d\n", nal->nal_unit_type);
 
-  struct buf_reader ibuf;
-  ibuf.cur_offset = 8;
+  //struct buf_reader ibuf;
+  //ibuf.cur_offset = 8;
 
   switch (nal->nal_unit_type) {
     case NAL_SPS:

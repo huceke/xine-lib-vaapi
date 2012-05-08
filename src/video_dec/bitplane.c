@@ -1097,7 +1097,6 @@ static void bitplane_decode_data (video_decoder_t *this_gen,
   AnimHeader *anhd                      = NULL;
   int i                                 = 0;
   int j                                 = 0;
-  int buf_ptr                           = 0;
   unsigned char r                       = 0;
   unsigned char g                       = 0;
   unsigned char b                       = 0;
@@ -1249,7 +1248,6 @@ static void bitplane_decode_data (video_decoder_t *this_gen,
           (anhd->operation == IFF_ANHD_ILBM) ) {
 
         /* iterate through each row */
-        buf_ptr                         = 0;
         this->size_uk                   = (((this->num_pixel) / 8) * this->num_bitplanes);
 
         if( this->buf_uk_hist != NULL )

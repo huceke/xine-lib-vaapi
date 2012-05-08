@@ -1252,6 +1252,7 @@ static void motion_fr_dmv (picture_t * picture, motion_t * motion,
 #undef bit_ptr
 }
 
+#if 0
 static void motion_reuse (picture_t * picture, motion_t * motion,
 			  void (** table) (uint8_t *, uint8_t *, int, int))
 {
@@ -1261,6 +1262,7 @@ static void motion_reuse (picture_t * picture, motion_t * motion,
     motion_y = motion->pmv[0][1];
 
 }
+#endif
 
 /* like motion_frame, but parsing without actual motion compensation */
 static void motion_fr_conceal (picture_t * picture)
@@ -1295,10 +1297,10 @@ static void motion_fi_field (picture_t * picture, motion_t * motion,
 #define bits (picture->bitstream_bits)
 #define bit_ptr (picture->bitstream_ptr)
     int motion_x, motion_y;
-    uint8_t ** ref_field;
+    /*uint8_t ** ref_field;*/
 
     NEEDBITS (bit_buf, bits, bit_ptr);
-    ref_field = motion->ref2[UBITS (bit_buf, 1)];
+    /*ref_field = motion->ref2[UBITS (bit_buf, 1)];*/
 
     // TODO field select may need to do something here for bob (weave ok)
     picture->XvMC_mv_field_sel[0][0] = picture->XvMC_mv_field_sel[1][0] = 0;
@@ -1328,10 +1330,10 @@ static void motion_fi_16x8 (picture_t * picture, motion_t * motion,
 #define bits (picture->bitstream_bits)
 #define bit_ptr (picture->bitstream_ptr)
     int motion_x, motion_y;
-    uint8_t ** ref_field;
+    /*uint8_t ** ref_field;*/
 
     NEEDBITS (bit_buf, bits, bit_ptr);
-    ref_field = motion->ref2[UBITS (bit_buf, 1)];
+    /*ref_field = motion->ref2[UBITS (bit_buf, 1)];*/
 
     // TODO field select may need to do something here bob  (weave ok)
     picture->XvMC_mv_field_sel[0][0] = picture->XvMC_mv_field_sel[1][0] = 0;
@@ -1351,7 +1353,7 @@ static void motion_fi_16x8 (picture_t * picture, motion_t * motion,
 
 
     NEEDBITS (bit_buf, bits, bit_ptr);
-    ref_field = motion->ref2[UBITS (bit_buf, 1)];
+    /*ref_field = motion->ref2[UBITS (bit_buf, 1)];*/
 
     // TODO field select may need to do something here for bob (weave ok)
     picture->XvMC_mv_field_sel[0][0] = picture->XvMC_mv_field_sel[1][0] = 0;
@@ -1973,7 +1975,7 @@ void mpeg2_xvmc_slice (mpeg2dec_accel_t *accel, picture_t * picture, int code, u
 				         picture->f_motion.pmv,
 				         picture->b_motion.pmv);
 		    } else {
-		        MOTION_CALL (motion_reuse, macroblock_modes);
+                        //MOTION_CALL (motion_reuse, macroblock_modes);
 		    }
 		    NEXT_MACROBLOCK;
 		} while (--mba_inc);

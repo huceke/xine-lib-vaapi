@@ -288,8 +288,12 @@ static void sequence_header_advanced( vdpau_vc1_decoder_t *this_gen, uint8_t *bu
 
     if ( read_bits( &sequence->br, 1 ) ) {
       if ( read_bits( &sequence->br, 1 ) ) {
+#ifdef LOG
         int exp = read_bits( &sequence->br, 16 );
         lprintf("framerate exp = %d\n", exp);
+#else
+        skip_bits( &sequence->br, 16 );
+#endif
       }
       else {
         double nr = read_bits( &sequence->br, 8 );
@@ -311,9 +315,13 @@ static void sequence_header_advanced( vdpau_vc1_decoder_t *this_gen, uint8_t *bu
       }
     }
     if ( read_bits( &sequence->br, 1 ) ) {
+#ifdef LOG
 	  int col = read_bits( &sequence->br, 8 );
       lprintf("color_standard = %d\n", col);
       skip_bits( &sequence->br, 16 );
+#else
+      skip_bits( &sequence->br, 24 );
+#endif
     }
   }
   sequence->picture.hrd_param_flag = read_bits( &sequence->br, 1 );
@@ -409,7 +417,7 @@ static void entry_point( vdpau_vc1_decoder_t *this_gen, uint8_t *buf, int len )
 static void picture_header( vdpau_vc1_decoder_t *this_gen, uint8_t *buf, int len )
 {
   sequence_t *sequence = (sequence_t*)&this_gen->sequence;
-  picture_t *pic = (picture_t*)&sequence->picture;
+  //picture_t *pic = (picture_t*)&sequence->picture;
   VdpPictureInfoVC1 *info = &(sequence->picture.vdp_infos);
   int tmp;
 
@@ -661,11 +669,13 @@ static void decode_render( vdpau_vc1_decoder_t *vd, vdpau_accel_t *accel, uint8_
     lprintf( "DECODER SUCCESS : slices=%d, slices_bytes=%d, current=%d, forwref:%d, backref:%d, pts:%lld\n",
               pic->vdp_infos.slice_count, vbit.bitstream_bytes, accel->surface, pic->vdp_infos.forward_reference, pic->vdp_infos.backward_reference, seq->seq_pts );
   }
+#ifdef LOG
   VdpPictureInfoVC1 *info = &(seq->picture.vdp_infos);
   lprintf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", info->slice_count, info->picture_type, info->frame_coding_mode,
            info->postprocflag, info->pulldown, info->interlace, info->tfcntrflag, info->finterpflag, info->psf, info->dquant, info->panscan_flag, info->refdist_flag,
            info->quantizer, info->extended_mv, info->extended_dmv, info->overlap, info->vstransform, info->loopfilter, info->fastuvmc, info->range_mapy_flag, info->range_mapy,
            info->range_mapuv_flag, info->range_mapuv, info->multires, info->syncmarker, info->rangered, info->maxbframes, info->deblockEnable, info->pquant );
+#endif
 
   if ( pic->field ) {
     int old_type = pic->vdp_infos.picture_type;
@@ -701,11 +711,13 @@ static void decode_render( vdpau_vc1_decoder_t *vd, vdpau_accel_t *accel, uint8_
       lprintf( "DECODER SUCCESS (second field): slices=%d, slices_bytes=%d, current=%d, forwref:%d, backref:%d, pts:%lld\n",
                 pic->vdp_infos.slice_count, vbit.bitstream_bytes, accel->surface, pic->vdp_infos.forward_reference, pic->vdp_infos.backward_reference, seq->seq_pts );
     }
+#ifdef LOG
     VdpPictureInfoVC1 *info = &(seq->picture.vdp_infos);
     lprintf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", info->slice_count, info->picture_type, info->frame_coding_mode,
              info->postprocflag, info->pulldown, info->interlace, info->tfcntrflag, info->finterpflag, info->psf, info->dquant, info->panscan_flag, info->refdist_flag,
              info->quantizer, info->extended_mv, info->extended_dmv, info->overlap, info->vstransform, info->loopfilter, info->fastuvmc, info->range_mapy_flag, info->range_mapy,
              info->range_mapuv_flag, info->range_mapuv, info->multires, info->syncmarker, info->rangered, info->maxbframes, info->deblockEnable, info->pquant );
+#endif
 
     pic->vdp_infos.picture_type = old_type;
   }
@@ -973,11 +985,10 @@ static void vdpau_vc1_decode_data (video_decoder_t *this_gen, buf_element_t *buf
     return;
   }
 
-  int res, startcode=0;
+  int res;
   while ( seq->bufseek <= seq->bufpos-4 ) {
     uint8_t *buffer = seq->buf+seq->bufseek;
     if ( buffer[0]==0 && buffer[1]==0 && buffer[2]==1 ) {
-      startcode = 1;
       seq->current_code = buffer[3];
       lprintf("current_code = %d\n", seq->current_code);
       if ( seq->start<0 ) {
@@ -1015,7 +1026,6 @@ static void vdpau_vc1_decode_data (video_decoder_t *this_gen, buf_element_t *buf
  * This function is called when xine needs to flush the system.
  */
 static void vdpau_vc1_flush (video_decoder_t *this_gen) {
-  vdpau_vc1_decoder_t *this = (vdpau_vc1_decoder_t *) this_gen;
 
   lprintf( "vdpau_vc1_flush\n" );
 }
@@ -1034,7 +1044,6 @@ static void vdpau_vc1_reset (video_decoder_t *this_gen) {
  * The decoder should forget any stored pts values here.
  */
 static void vdpau_vc1_discontinuity (video_decoder_t *this_gen) {
-  vdpau_vc1_decoder_t *this = (vdpau_vc1_decoder_t *) this_gen;
 
   lprintf( "vdpau_vc1_discontinuity\n" );
 }

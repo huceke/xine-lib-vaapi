@@ -298,7 +298,8 @@ static int connect_context(pulse_driver_t *this) {
   }
 
   if (!this->context) {
-    char fn[XINE_PATH_MAX], *p;
+    char fn[XINE_PATH_MAX];
+    const char *p;
 
     if (pa_get_binary_name(fn, sizeof(fn)))
       p = pa_path_get_filename(fn);
