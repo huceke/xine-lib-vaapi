@@ -477,7 +477,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
 #endif
 
   if( this->class->enable_vaapi ) {
-    this->class->enable_dri = true;
+    this->class->enable_dri = 1;
     this->output_format = XINE_IMGFMT_VAAPI;
     this->context->get_buffer = get_buffer;
     this->context->reget_buffer = get_buffer;
