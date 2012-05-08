@@ -688,7 +688,7 @@ static ao_driver_t *open_jack_plugin (audio_driver_class_t *class_gen,
   const char **matching_ports = NULL;
 
   /* for usability reasons, keep this in sync with audio_oss_out.c */
-  static char *speaker_arrangement[] = {
+  static const char * const speaker_arrangement[] = {
     "Mono 1.0", "Stereo 2.0", "Headphones 2.0", "Stereo 2.1",
     "Surround 3.0", "Surround 4.0", "Surround 4.1", "Surround 5.0",
     "Surround 5.1", "Surround 6.0",

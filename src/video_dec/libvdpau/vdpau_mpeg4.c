@@ -1027,7 +1027,6 @@ static void vdpau_mpeg4_decode_data (video_decoder_t *this_gen, buf_element_t *b
  * This function is called when xine needs to flush the system.
  */
 static void vdpau_mpeg4_flush (video_decoder_t *this_gen) {
-  vdpau_mpeg4_decoder_t *this = (vdpau_mpeg4_decoder_t *) this_gen;
 
   lprintf( "vdpau_mpeg4_flush\n" );
 }

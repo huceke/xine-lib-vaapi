@@ -804,7 +804,7 @@ static void vdpau_h264_decode_data (video_decoder_t *this_gen,
  */
 static void vdpau_h264_flush (video_decoder_t *this_gen) {
   vdpau_h264_decoder_t *this = (vdpau_h264_decoder_t*) this_gen;
-  struct decoded_picture *decoded_pic = NULL;
+  //struct decoded_picture *decoded_pic = NULL;
 
   if(this->dangling_img){
     this->dangling_img->free(this->dangling_img);

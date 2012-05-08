@@ -73,6 +73,7 @@ typedef struct ff_video_class_s {
   int                     enable_vaapi;
   int                     vaapi_mpeg_softdec;
   int                     vaapi_mpeg_softdec_deinterlace;
+  uint8_t                 enable_dri;
 
   xine_t                 *xine;
 } ff_video_class_t;
@@ -97,7 +98,7 @@ struct ff_video_decoder_s {
   uint8_t           is_mpeg12:1;
   uint8_t           pp_available:1;
   uint8_t           yuv_init:1;
-  uint8_t           is_direct_rendering_disabled:1;
+  uint8_t           is_direct_rendering_disabled:1;  /* used only to avoid flooding log */
   uint8_t           cs_convert_init:1;
   uint8_t           assume_bad_field_picture:1;
 
@@ -266,6 +267,8 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
       return avcodec_default_get_buffer(context, av_frame);
     }
   }
+
+  this->is_direct_rendering_disabled = 0;
 
   img = this->stream->video_out->get_frame (this->stream->video_out,
                                             width,
@@ -440,7 +443,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
 
   /* Some codecs (eg rv10) copy flags in init so it's necessary to set
    * this flag here in case we are going to use direct rendering */
-  if(this->codec->capabilities & CODEC_CAP_DR1 && this->codec->id != CODEC_ID_H264) {
+  if(this->codec->capabilities & CODEC_CAP_DR1 && this->class->enable_dri) {
     this->context->flags |= CODEC_FLAG_EMU_EDGE;
   }
 
@@ -465,7 +468,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
   /* enable direct rendering by default */
   this->output_format = XINE_IMGFMT_YV12;
 #ifdef ENABLE_DIRECT_RENDERING
-  if( this->codec->capabilities & CODEC_CAP_DR1 && this->codec->id != CODEC_ID_H264 ) {
+  if( this->codec->capabilities & CODEC_CAP_DR1 && this->class->enable_dri ) {
     this->context->get_buffer = get_buffer;
     this->context->release_buffer = release_buffer;
     xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
@@ -474,6 +477,7 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
 #endif
 
   if( this->class->enable_vaapi ) {
+    this->class->enable_dri = true;
     this->output_format = XINE_IMGFMT_VAAPI;
     this->context->get_buffer = get_buffer;
     this->context->reget_buffer = get_buffer;
@@ -618,6 +622,12 @@ static void pp_quality_cb(void *user_data, xine_cfg_entry_t *entry) {
   ff_video_class_t   *class = (ff_video_class_t *) user_data;
 
   class->pp_quality = entry->num_value;
+}
+
+static void dri_cb(void *user_data, xine_cfg_entry_t *entry) {
+  ff_video_class_t   *class = (ff_video_class_t *) user_data;
+
+  class->enable_dri = entry->num_value;
 }
 
 static void pp_change_quality (ff_video_decoder_t *this) {
@@ -2180,6 +2190,11 @@ void *init_video_plugin (xine_t *xine, void *data) {
     _("Enable VAAPI"),
     _("Enable or disable usage of vaapi"),
     10, vaapi_enable_vaapi, this);
+  this->enable_dri = xine->config->register_bool(config, "video.processing.ffmpeg_direct_rendering", 1,
+    _("Enable direct rendering"),
+    _("Disable direct rendering if you are experiencing lock-ups with\n"
+      "streams with lot of reference frames."),
+    10, dri_cb, this);
 
   return this;
 }

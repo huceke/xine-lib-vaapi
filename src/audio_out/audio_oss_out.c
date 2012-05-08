@@ -704,11 +704,11 @@ static ao_driver_t *open_plugin (audio_driver_class_t *class_gen, const void *da
   int              caps;
   int              audio_fd;
   int              num_channels, status, arg;
-  static char     *sync_methods[] = {"auto", "getodelay", "getoptr", "softsync", "probebuffer", NULL};
-  static char     *devname_opts[] = {"auto", "/dev/dsp", "/dev/sound/dsp", NULL};
+  static const char * const sync_methods[] = {"auto", "getodelay", "getoptr", "softsync", "probebuffer", NULL};
+  static const char * const devname_opts[] = {"auto", "/dev/dsp", "/dev/sound/dsp", NULL};
   int devname_val, devname_num;
   /* for usability reasons, keep this in sync with audio_alsa_out.c */
-  static char     *speaker_arrangement[] = {"Mono 1.0", "Stereo 2.0", "Headphones 2.0", "Stereo 2.1",
+  static const char * const speaker_arrangement[] = {"Mono 1.0", "Stereo 2.0", "Headphones 2.0", "Stereo 2.1",
     "Surround 3.0", "Surround 4.0", "Surround 4.1", "Surround 5.0", "Surround 5.1", "Surround 6.0",
     "Surround 6.1", "Surround 7.1", "Pass Through", NULL};
   #define MONO		0

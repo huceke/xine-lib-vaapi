@@ -258,10 +258,10 @@ static int picture_coding_extension (picture_t * picture, uint8_t * buffer)
 static int sequence_display_extension (picture_t * picture, uint8_t * buffer) {
   /* FIXME: implement. */
   uint32_t bit_position;
-  uint32_t padding;
+  /*uint32_t padding;*/
   
   bit_position = 0; 
-  padding = get_bits(buffer, 4, &bit_position);
+  /*padding = get_bits(buffer, 4, &bit_position);*/ bit_position += 4;
   picture->video_format = get_bits(buffer, 3, &bit_position);
   picture->colour_description = get_bits(buffer, 1, &bit_position);
   if(picture->colour_description) {
@@ -270,7 +270,7 @@ static int sequence_display_extension (picture_t * picture, uint8_t * buffer) {
   picture->matrix_coefficients = get_bits(buffer, 8, &bit_position);
   }
   picture->display_horizontal_size = get_bits(buffer, 14, &bit_position);
-  padding = get_bits(buffer, 1, &bit_position);
+  /*padding = get_bits(buffer, 1, &bit_position);*/ bit_position++;
   picture->display_vertical_size = get_bits(buffer, 14, &bit_position);
 
 #ifdef LOG_PAN_SCAN
@@ -291,18 +291,18 @@ static int sequence_display_extension (picture_t * picture, uint8_t * buffer) {
 
 static int picture_display_extension (picture_t * picture, uint8_t * buffer) {
   uint32_t bit_position;
-  uint32_t padding;
+  /*uint32_t padding;*/
 
 #ifdef LOG_PAN_SCAN     
     printf ("libmpeg2: picture_display_extension\n");
 #endif
   
   bit_position = 0; 
-  padding = get_bits(buffer, 4, &bit_position);
+  /*padding = get_bits(buffer, 4, &bit_position);*/ bit_position += 4;
   picture->frame_centre_horizontal_offset = get_bits_signed(buffer, 16, &bit_position);
-  padding = get_bits(buffer, 1, &bit_position);
+  /*padding = get_bits(buffer, 1, &bit_position);*/ bit_position++;
   picture->frame_centre_vertical_offset = get_bits_signed(buffer, 16, &bit_position);
-  padding = get_bits(buffer, 1, &bit_position);
+  /*padding = get_bits(buffer, 1, &bit_position);*/ bit_position++;
 
 #ifdef LOG_PAN_SCAN
   printf("Pan & Scan centre (x,y) = (%d, %d)\n",  
@@ -370,13 +370,13 @@ int mpeg2_header_extension (picture_t * picture, uint8_t * buffer)
 
 int mpeg2_header_group_of_pictures (picture_t * picture, uint8_t * buffer) {
   uint32_t bit_position;
-  uint32_t padding;
+  /*uint32_t padding;*/
   bit_position = 0;
   
   picture->drop_frame_flag = get_bits(buffer, 1, &bit_position);
   picture->time_code_hours = get_bits(buffer, 5, &bit_position);
   picture->time_code_minutes = get_bits(buffer, 6, &bit_position);
-  padding = get_bits(buffer, 1, &bit_position);
+  /*padding = get_bits(buffer, 1, &bit_position);*/ bit_position++;
   picture->time_code_seconds = get_bits(buffer, 6, &bit_position);
   picture->time_code_pictures = get_bits(buffer, 6, &bit_position);
   picture->closed_gop = get_bits(buffer, 1, &bit_position);

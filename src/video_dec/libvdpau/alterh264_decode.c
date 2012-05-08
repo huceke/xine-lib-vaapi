@@ -290,11 +290,13 @@ dbp_append (vdpau_h264_alter_decoder_t * this_gen, int second_field)
   int max = sp->num_ref_frames ? sp->num_ref_frames : 1;
   max = (max > MAX_DPB_SIZE) ? MAX_DPB_SIZE : max;
 
+#ifdef LOG
   vo_frame_t *vo = (vo_frame_t *) cur_pic->videoSurface;
   vdpau_accel_t *accel = (vdpau_accel_t *) vo->accel_data;
   lprintf
     ("|||||||||||||||||||||||||||||||||||||||| dbp_append surface = %d\n",
      accel->surface);
+#endif
 
   if (second_field)
   {
@@ -1061,14 +1063,14 @@ ref_pic_list_reordering (vdpau_h264_alter_decoder_t * this_gen)
   {
     if (read_bits (&seq->br, 1))
     {
-      uint32_t tmp, diff;
+      uint32_t tmp/*, diff*/;
       do
       {
 	tmp = read_exp_ue (&seq->br);
 	if (tmp == 0 || tmp == 1)
-	  diff = read_exp_ue (&seq->br);
+	  /*diff =*/ read_exp_ue (&seq->br);
 	else if (tmp == 2)
-	  diff = read_exp_ue (&seq->br);
+          /*diff =*/ read_exp_ue (&seq->br);
       }
       while (tmp != 3 && !seq->br.oflow);
     }
@@ -1077,14 +1079,14 @@ ref_pic_list_reordering (vdpau_h264_alter_decoder_t * this_gen)
   {
     if (read_bits (&seq->br, 1))
     {
-      uint32_t tmp2, diff2;
+      uint32_t tmp2/*, diff2*/;
       do
       {
 	tmp2 = read_exp_ue (&seq->br);
 	if (tmp2 == 0 || tmp2 == 1)
-	  diff2 = read_exp_ue (&seq->br);
+	  /*diff2 =*/ read_exp_ue (&seq->br);
 	else if (tmp2 == 2)
-	  diff2 = read_exp_ue (&seq->br);
+	  /*diff2 =*/ read_exp_ue (&seq->br);
       }
       while (tmp2 != 3 && !seq->br.oflow);
     }
@@ -1101,11 +1103,15 @@ dec_ref_pic_marking (vdpau_h264_alter_decoder_t * this_gen, uint8_t idr)
 
   if (idr)
   {
+#ifdef LOG
     uint8_t no_output_of_prior_pics_flag = read_bits (&seq->br, 1);
     lprintf ("no_output_of_prior_pics_flag = %u\n",
 	     no_output_of_prior_pics_flag);
     uint8_t long_term_reference_flag = read_bits (&seq->br, 1);
     lprintf ("long_term_reference_flag = %u\n", long_term_reference_flag);
+#else
+    skip_bits (&seq->br, 2);
+#endif
   }
   else
   {
@@ -1144,20 +1150,32 @@ dec_ref_pic_marking (vdpau_h264_alter_decoder_t * this_gen, uint8_t idr)
 	}
 	if (memory_management_control_operation == 2)
 	{
+#ifdef LOG
 	  uint32_t long_term_pic_num = read_exp_ue (&seq->br);
 	  lprintf ("long_term_pic_num = %u\n", long_term_pic_num);
+#else
+          read_exp_ue (&seq->br);
+#endif
 	}
 	if (memory_management_control_operation == 3
 	    || memory_management_control_operation == 6)
 	{
+#ifdef LOG
 	  uint32_t long_term_frame_idx = read_exp_ue (&seq->br);
 	  lprintf ("long_term_frame_idx = %u\n", long_term_frame_idx);
+#else
+          read_exp_ue (&seq->br);
+#endif
 	}
 	if (memory_management_control_operation == 4)
 	{
+#ifdef LOG
 	  uint32_t max_long_term_frame_idx_plus1 = read_exp_ue (&seq->br);
 	  lprintf ("max_long_term_frame_idx_plus1 = %u\n",
 		   max_long_term_frame_idx_plus1);
+#else
+          read_exp_ue (&seq->br);
+#endif
 	}
       }
       while (memory_management_control_operation && !seq->br.oflow);

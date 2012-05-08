@@ -1360,7 +1360,7 @@ static ao_driver_t *open_plugin (audio_driver_class_t *class_gen, const void *da
   char                *pcm_device;
   snd_pcm_hw_params_t *params;
   /* for usability reasons, keep this in sync with audio_oss_out.c */
-  static const char   *speaker_arrangement[] = {"Mono 1.0", "Stereo 2.0", "Headphones 2.0", "Stereo 2.1",
+  static const char * const speaker_arrangement[] = {"Mono 1.0", "Stereo 2.0", "Headphones 2.0", "Stereo 2.1",
     "Surround 3.0", "Surround 4.0", "Surround 4.1", "Surround 5.0", "Surround 5.1", "Surround 6.0",
     "Surround 6.1", "Surround 7.1", "Pass Through", NULL};
   #define MONO		0
