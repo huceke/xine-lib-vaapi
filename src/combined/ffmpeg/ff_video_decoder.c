@@ -137,6 +137,9 @@ struct ff_video_decoder_s {
   AVPaletteControl  palette_control;
 #endif
 
+  int               color_matrix, full2mpeg;
+  unsigned char     ytab[256], ctab[256];
+
 #ifdef LOG
   enum PixelFormat  debug_fmt;
 #endif
@@ -146,6 +149,34 @@ struct ff_video_decoder_s {
   vo_frame_t            *accel_img;
   uint8_t               set_stream_info;
 };
+
+static void ff_check_colorspace (ff_video_decoder_t *this) {
+  int i, cm;
+
+  cm = this->context->colorspace << 1;
+  /* ffmpeg bug: color_range not set by svq3 decoder */
+  i = this->context->pix_fmt;
+  if (cm && ((i == PIX_FMT_YUVJ420P) || (i == PIX_FMT_YUVJ444P) ||
+    (this->context->color_range == AVCOL_RANGE_JPEG)))
+    cm |= 1;
+
+  /* report changes of colorspyce and/or color range */
+  if (cm != this->color_matrix) {
+    this->color_matrix = cm;
+    xprintf (this->stream->xine, XINE_VERBOSITY_LOG,
+      "ffmpeg_video_dec: color matrix #%d\n", cm >> 1);
+
+    this->full2mpeg = 0;
+    if (cm & 1) {
+      /* sigh. fall back to manual conversion */
+      this->full2mpeg = 1;
+      for (i = 0; i < 256; i++) {
+        this->ytab[i] = (219 * i + 127) / 255 + 16;
+        this->ctab[i] = 112 * (i - 128) / 127 + 128;
+      }
+    }
+  }
+}
 
 static void set_stream_info(ff_video_decoder_t *this) {
   _x_stream_info_set(this->stream, XINE_STREAM_INFO_VIDEO_WIDTH,  this->bih.biWidth);
@@ -160,6 +191,8 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
   vo_frame_t *img;
   int width  = context->width;
   int height = context->height;
+
+  ff_check_colorspace (this);
 
   if (!this->bih.biWidth || !this->bih.biHeight) {
     this->bih.biWidth = width;
@@ -236,7 +269,9 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
   if(this->accel)
     guarded_render = this->accel->guarded_render(this->accel_img);
 
-  if( (this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) || guarded_render) {
+  if (this->full2mpeg || (this->context->pix_fmt != PIX_FMT_YUV420P &&
+    this->context->pix_fmt != PIX_FMT_YUVJ420P) || guarded_render) {
+
     if (!this->is_direct_rendering_disabled) {
       xprintf(this->stream->xine, XINE_VERBOSITY_LOG,
               _("ffmpeg_video_dec: unsupported frame format, DR1 disabled.\n"));
@@ -730,6 +765,8 @@ static void ff_convert_frame(ff_video_decoder_t *this, vo_frame_t *img, AVFrame 
     printf ("frame format == %08x\n", this->debug_fmt = this->context->pix_fmt);
 #endif
 
+  ff_check_colorspace (this);
+
   dy = img->base[0];
   du = img->base[1];
   dv = img->base[2];
@@ -960,54 +997,91 @@ static void ff_convert_frame(ff_video_decoder_t *this, vo_frame_t *img, AVFrame 
 
   } else {
 
-    for (y = 0; y < this->bih.biHeight; y++) {
-      xine_fast_memcpy (dy, sy, img->width);
+    int subsamph = (this->context->pix_fmt == PIX_FMT_YUV444P)
+                || (this->context->pix_fmt == PIX_FMT_YUVJ444P);
+    int subsampv = (this->context->pix_fmt != PIX_FMT_YUV420P)
+                && (this->context->pix_fmt != PIX_FMT_YUVJ420P);
 
-      dy += img->pitches[0];
+    if (this->full2mpeg) {
 
-      sy += av_frame->linesize[0];
-    }
+      uint8_t *ytab = this->ytab;
+      uint8_t *ctab = this->ctab;
+      uint8_t *p, *q;
+      int x;
 
-    for (y = 0; y < this->bih.biHeight / 2; y++) {
-
-      if (this->context->pix_fmt != PIX_FMT_YUV444P) {
-
-        xine_fast_memcpy (du, su, img->width/2);
-        xine_fast_memcpy (dv, sv, img->width/2);
-
-      } else {
-
-        int x;
-        uint8_t *src;
-        uint8_t *dst;
-
-        /* subsample */
-
-        src = su; dst = du;
-        for (x=0; x<(img->width/2); x++) {
-          *dst = *src;
-          dst++;
-          src += 2;
-        }
-        src = sv; dst = dv;
-        for (x=0; x<(img->width/2); x++) {
-          *dst = *src;
-          dst++;
-          src += 2;
-        }
-
+      for (y = 0; y < this->bih.biHeight; y++) {
+        p = sy;
+        q = dy;
+        for (x = img->width; x > 0; x--) *q++ = ytab[*p++];
+        dy += img->pitches[0];
+        sy += av_frame->linesize[0];
       }
 
-      du += img->pitches[1];
-      dv += img->pitches[2];
-
-      if (this->context->pix_fmt != PIX_FMT_YUV420P && this->context->pix_fmt != PIX_FMT_YUVJ420P) {
-        su += 2*av_frame->linesize[1];
-        sv += 2*av_frame->linesize[2];
-      } else {
-        su += av_frame->linesize[1];
-        sv += av_frame->linesize[2];
+      for (y = 0; y < this->bih.biHeight / 2; y++) {
+        if (!subsamph) {
+          p = su, q = du;
+          for (x = img->width / 2; x > 0; x--) *q++ = ctab[*p++];
+          p = sv, q = dv;
+          for (x = img->width / 2; x > 0; x--) *q++ = ctab[*p++];
+        } else {
+          p = su, q = sv;
+          for (x = img->width / 2; x > 0; x--) {*q++ = ctab[*p]; p += 2;}
+          p = sv, q = dv;
+          for (x = img->width / 2; x > 0; x--) {*q++ = ctab[*p]; p += 2;}
+        }
+        du += img->pitches[1];
+        dv += img->pitches[2];
+        if (subsampv) {
+          su += 2 * av_frame->linesize[1];
+          sv += 2 * av_frame->linesize[2];
+        } else {
+          su += av_frame->linesize[1];
+          sv += av_frame->linesize[2];
+        }
       }
+
+    } else {
+
+      for (y = 0; y < this->bih.biHeight; y++) {
+        xine_fast_memcpy (dy, sy, img->width);
+        dy += img->pitches[0];
+        sy += av_frame->linesize[0];
+      }
+
+      for (y = 0; y < this->bih.biHeight / 2; y++) {
+        if (!subsamph) {
+          xine_fast_memcpy (du, su, img->width/2);
+          xine_fast_memcpy (dv, sv, img->width/2);
+        } else {
+          int x;
+          uint8_t *src;
+          uint8_t *dst;
+          src = su;
+          dst = du;
+          for (x = 0; x < (img->width / 2); x++) {
+            *dst = *src;
+            dst++;
+            src += 2;
+          }
+          src = sv;
+          dst = dv;
+          for (x = 0; x < (img->width / 2); x++) {
+            *dst = *src;
+            dst++;
+            src += 2;
+          }
+        }
+        du += img->pitches[1];
+        dv += img->pitches[2];
+        if (subsampv) {
+          su += 2*av_frame->linesize[1];
+          sv += 2*av_frame->linesize[2];
+        } else {
+          su += av_frame->linesize[1];
+          sv += av_frame->linesize[2];
+        }
+      }
+
     }
   }
 }
@@ -1796,8 +1870,8 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
           img->duration = video_step_to_use;
 
         /* additionally crop away the extra pixels due to adjusting frame size above */
-        img->crop_right  = this->crop_right  + (img->width  - this->bih.biWidth);
-        img->crop_bottom = this->crop_bottom + (img->height - this->bih.biHeight);
+        img->crop_right  = img->width  - this->bih.biWidth;
+        img->crop_bottom = img->height - this->bih.biHeight;
 
         /* transfer some more frame settings for deinterlacing */
         img->progressive_frame = !this->av_frame->interlaced_frame;
@@ -1837,8 +1911,8 @@ static void ff_handle_buffer (ff_video_decoder_t *this, buf_element_t *buf) {
       img->duration  = video_step_to_use;
 
       /* additionally crop away the extra pixels due to adjusting frame size above */
-      img->crop_right  = ((this->bih.biWidth  <= 0) ? 0 : this->crop_right)  + (img->width  - this->bih.biWidth);
-      img->crop_bottom = ((this->bih.biHeight <= 0) ? 0 : this->crop_bottom) + (img->height - this->bih.biHeight);
+      img->crop_right  = this->bih.biWidth  <= 0 ? 0 : (img->width  - this->bih.biWidth);
+      img->crop_bottom = this->bih.biHeight <= 0 ? 0 : (img->height - this->bih.biHeight);
 
       img->bad_frame = 1;
       this->skipframes = img->draw(img, this->stream);
