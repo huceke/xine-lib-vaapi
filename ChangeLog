@@ -86,6 +86,10 @@ xine-lib (1.1.21) ????-??-??
   * mpeg-ts fixes and enhancements
   * Improved syncing of DVB subtitles
   * BluRay support (requires libbluray)
+  * Fix full range YUV (with ffmpeg codecs)
+  * Fix multithreading with recent ffmpeg versions
+  * Fix cropping with ffmpeg codecs
+  * Fix OSD when using OpenGL video output
 
 xine-lib (1.1.20.2) ????-??-??
   * Various bug fixes.

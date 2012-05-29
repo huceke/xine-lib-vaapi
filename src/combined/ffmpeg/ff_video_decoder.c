@@ -334,7 +334,7 @@ static int get_buffer(AVCodecContext *context, AVFrame *av_frame){
   /* take over pts for this frame to have it reordered */
   av_frame->reordered_opaque = context->reordered_opaque;
 
-  xine_list_push_back(this->dr1_frames, av_frame);
+  xine_list_push_back(this->dr1_frames, img);
 
   return 0;
 }
@@ -363,10 +363,11 @@ static void release_buffer(struct AVCodecContext *context, AVFrame *av_frame){
 
     xine_list_iterator_t it;
 
-    it = xine_list_find(this->dr1_frames, av_frame);
+    it = xine_list_find(this->dr1_frames, av_frame->opaque);
     //assert(it);
-    if( it != NULL )
+    if( it != NULL ) {
       xine_list_remove(this->dr1_frames, it);
+    }
   } else {
     avcodec_default_release_buffer(context, av_frame);
   }
@@ -1024,7 +1025,7 @@ static void ff_convert_frame(ff_video_decoder_t *this, vo_frame_t *img, AVFrame 
           p = sv, q = dv;
           for (x = img->width / 2; x > 0; x--) *q++ = ctab[*p++];
         } else {
-          p = su, q = sv;
+          p = su, q = du;
           for (x = img->width / 2; x > 0; x--) {*q++ = ctab[*p]; p += 2;}
           p = sv, q = dv;
           for (x = img->width / 2; x > 0; x--) {*q++ = ctab[*p]; p += 2;}
@@ -1992,7 +1993,6 @@ static void ff_reset (video_decoder_t *this_gen) {
   if(this->context && this->decoder_ok)
   {
     xine_list_iterator_t it;
-    AVFrame *av_frame;
 
     avcodec_flush_buffers(this->context);
 
@@ -2000,8 +2000,9 @@ static void ff_reset (video_decoder_t *this_gen) {
      * don't release their DR1 frames */
     while( (it = xine_list_front(this->dr1_frames)) != NULL )
     {
-      av_frame = (AVFrame *)xine_list_get_value(this->dr1_frames, it);
-      release_buffer(this->context, av_frame);
+      vo_frame_t *img = (vo_frame_t *)xine_list_get_value(this->dr1_frames, it);
+      if (img)
+        img->free(img);
     }
     xine_list_clear(this->dr1_frames);
   }
@@ -2062,7 +2063,6 @@ static void ff_dispose (video_decoder_t *this_gen) {
 
   if (this->decoder_ok) {
     xine_list_iterator_t it;
-    AVFrame *av_frame;
 
     pthread_mutex_lock(&ffmpeg_lock);
     avcodec_close (this->context);
@@ -2072,8 +2072,9 @@ static void ff_dispose (video_decoder_t *this_gen) {
      * don't release their DR1 frames */
     while( (it = xine_list_front(this->dr1_frames)) != NULL )
     {
-      av_frame = (AVFrame *)xine_list_get_value(this->dr1_frames, it);
-      release_buffer(this->context, av_frame);
+      vo_frame_t *img = (vo_frame_t *)xine_list_get_value(this->dr1_frames, it);
+      if (img)
+        img->free(img);
     }
 
     this->stream->video_out->close(this->stream->video_out, this->stream);

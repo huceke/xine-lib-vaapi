@@ -218,6 +218,13 @@ AC_DEFUN([CC_ATTRIBUTE_SENTINEL], [
     [$1], [$2])
 ])
 
+AC_DEFUN([CC_ATTRIBUTE_WEAK], [
+  CC_CHECK_ATTRIBUTE(
+    [weak], ,
+    [void some_function(void *, int) __attribute__((weak));],
+    [$1], [$2])
+])
+
 AC_DEFUN([CC_ATTRIBUTE_DEPRECATED], [
   CC_CHECK_ATTRIBUTE(
     [deprecated], ,

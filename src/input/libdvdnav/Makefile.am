@@ -24,7 +24,7 @@ libdvdnav_la_SOURCES = \
 	nav_read.c \
 	dvd_reader.c \
 	dvd_input.c \
-        dvd_udf.c
+	dvd_udf.c
 libdvdnav_la_LIBADD = $(PTHREAD_LIBS)
 
 noinst_HEADERS = \

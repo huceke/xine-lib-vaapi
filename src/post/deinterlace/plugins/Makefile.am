@@ -23,7 +23,7 @@ AM_CFLAGS   = $(VISIBILITY_FLAG)
 AM_CPPFLAGS = -I$(top_srcdir)/src/post/deinterlace \
               -I$(top_srcdir)/src/xine-utils
 
-EXTRA_DIST = greedy2frame_template.c greedyh.asm \
+EXTRA_DIST = greedy2frame_template.c greedy2frame_template_sse2.c greedyh.asm \
 	tomsmocomp/SearchLoop0A.inc tomsmocomp/SearchLoopBottom.inc \
 	tomsmocomp/SearchLoopEdgeA.inc tomsmocomp/SearchLoopEdgeA8.inc \
 	tomsmocomp/SearchLoopOddA.inc tomsmocomp/SearchLoopOddA2.inc \

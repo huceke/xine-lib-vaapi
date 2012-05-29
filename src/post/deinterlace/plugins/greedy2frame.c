@@ -33,6 +33,7 @@
 
 #include <xine/attributes.h>
 #include <xine/xineutils.h>
+#include "xine_mmx.h"
 #include "deinterlace.h"
 #include "speedtools.h"
 #include "speedy.h"
@@ -44,12 +45,45 @@
 // uncomment next line to see this
 //#define CHECK_BOBWEAVE
 
-static int GreedyTwoFrameThreshold = 4;
-static int GreedyTwoFrameThreshold2 = 8;
+#define GREEDYTWOFRAMETHRESHOLD 4
+#define GREEDYTWOFRAMETHRESHOLD2 8
 
-#define IS_SSE 1
+#define IS_MMXEXT 1
 #include "greedy2frame_template.c"
-#undef IS_SSE
+#undef IS_MMXEXT
+
+#include "greedy2frame_template_sse2.c"
+
+static void DeinterlaceGreedy2Frame(uint8_t *output, int outstride,
+                                    deinterlace_frame_data_t *data,
+                                    int bottom_field, int second_field, int width, int height )
+
+{
+    if (xine_mm_accel() & MM_ACCEL_X86_SSE2) {
+        if (((uintptr_t)output & 15) || (outstride & 15) ||
+            width & 7 ||
+            ((uintptr_t)data->f0 & 15) || ((uintptr_t)data->f1 & 15)) {
+            /*
+             * instead of using an unaligned sse2 version just fall back to mmx
+             * which has no alignment restriction (though might be slow unaliged,
+             * but shouldn't hit this hopefully anyway). Plus in my experiments this
+             * was at least as fast as a naive unaligned sse2 version anyway (due to
+             * the inability to use streaming stores).
+             */
+            DeinterlaceGreedy2Frame_MMXEXT(output, outstride, data,
+                                           bottom_field, second_field, width, height );
+        } else {
+            DeinterlaceGreedy2Frame_SSE2(output, outstride, data,
+                                         bottom_field, second_field, width, height );
+        }
+    }
+    else {
+        DeinterlaceGreedy2Frame_MMXEXT(output, outstride, data,
+                                       bottom_field, second_field, width, height );
+        /* could fall back to 3dnow/mmx here too */
+    }
+}
+
 
 static deinterlace_method_t greedy2framemethod =
 {
@@ -61,7 +95,7 @@ static deinterlace_method_t greedy2framemethod =
     0,
     0,
     0,
-    DeinterlaceGreedy2Frame_SSE,
+    DeinterlaceGreedy2Frame,
     1,
     NULL
 };

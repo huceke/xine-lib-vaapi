@@ -344,6 +344,89 @@ static unsigned int diff_factor_packed422_scanline_mmx( uint8_t *cur, uint8_t *o
 }
 #endif
 
+#if defined(ARCH_X86) || defined(ARCH_X86_64)
+
+static const sse_t dqwYMask = { uq: { 0x00ff00ff00ff00ffULL, 0x00ff00ff00ff00ffULL }};
+static const sse_t dqwCMask = { uq: { 0xff00ff00ff00ff00ULL, 0xff00ff00ff00ff00ULL }};
+
+static unsigned int diff_factor_packed422_scanline_sse2_aligned( uint8_t *cur, uint8_t *old, int width )
+{
+    register unsigned int temp;
+
+    width /= 8;
+
+    movdqa_m2r( dqwYMask, xmm1 );
+    movd_m2r( BitShift, xmm7 );
+    pxor_r2r( xmm0, xmm0 );
+
+    while( width-- ) {
+        movdqa_m2r( *cur, xmm4 );
+        movdqa_m2r( *old, xmm5 );
+
+        pand_r2r( xmm1, xmm4 );
+        pand_r2r( xmm1, xmm5 );
+
+        psubw_r2r( xmm5, xmm4 );   /* mm4 = Y1 - Y2            */
+        pmaddwd_r2r( xmm4, xmm4 ); /* mm4 = (Y1 - Y2)^2        */
+        psrld_r2r( xmm7, xmm4 );   /* divide mm4 by 2^BitShift */
+        paddd_r2r( xmm4, xmm0 );   /* keep total in mm0        */
+
+        cur += 16;
+        old += 16;
+    }
+
+    pshufd_r2r(xmm0, xmm1, 0x0e);
+    paddd_r2r(xmm1, xmm0);
+    pshufd_r2r(xmm0, xmm1, 0x01);
+    paddd_r2r(xmm1, xmm0);
+
+    movd_r2a(xmm0, temp);
+    return temp;
+}
+#endif
+
+#if defined(ARCH_X86) || defined(ARCH_X86_64)
+static unsigned int diff_factor_packed422_scanline_sse2( uint8_t *cur, uint8_t *old, int width )
+{
+    if (0 == (((unsigned int)cur|(unsigned int)old) & 15)) {
+        return diff_factor_packed422_scanline_sse2_aligned(cur, old, width);
+    }
+
+    register unsigned int temp;
+
+    width /= 8;
+
+    movdqa_m2r( dqwYMask, xmm1 );
+    movd_m2r( BitShift, xmm7 );
+    pxor_r2r( xmm0, xmm0 );
+
+    while( width-- ) {
+        movdqu_m2r( *cur, xmm4 );
+        movdqu_m2r( *old, xmm5 );
+
+        pand_r2r( xmm1, xmm4 );
+        pand_r2r( xmm1, xmm5 );
+
+        psubw_r2r( xmm5, xmm4 );   /* mm4 = Y1 - Y2            */
+        pmaddwd_r2r( xmm4, xmm4 ); /* mm4 = (Y1 - Y2)^2        */
+        psrld_r2r( xmm7, xmm4 );   /* divide mm4 by 2^BitShift */
+        paddd_r2r( xmm4, xmm0 );   /* keep total in mm0        */
+
+        cur += 16;
+        old += 16;
+    }
+
+    pshufd_r2r(xmm0, xmm1, 0x0e);
+    paddd_r2r(xmm1, xmm0);
+    pshufd_r2r(xmm0, xmm1, 0x01);
+    paddd_r2r(xmm1, xmm0);
+
+    movd_r2a(xmm0, temp);
+
+    return temp;
+}
+#endif
+
 #define ABS(a) (((a) < 0)?-(a):(a))
 
 #if defined(ARCH_X86) || defined(ARCH_X86_64)
@@ -716,6 +799,130 @@ static void vfilter_chroma_332_packed422_scanline_mmx( uint8_t *output, int widt
     emms();
 }
 #endif
+
+#if defined(ARCH_X86) || defined(ARCH_X86_64)
+static void vfilter_chroma_332_packed422_scanline_sse2_aligned( uint8_t *output, int width,
+                                                                uint8_t *m, uint8_t *t, uint8_t *b )
+{
+    int i;
+
+    // Get width in bytes.
+    width *= 2;
+    i = width / 16;
+    width -= i * 16;
+
+    movdqa_m2r( dqwYMask, xmm7 );
+    movdqa_m2r( dqwCMask, xmm6 );
+
+    while( i-- ) {
+        movdqa_m2r ( *t, xmm0 );
+        movdqa_m2r ( *b, xmm1 );
+        movdqa_m2r ( *m, xmm2 );
+
+        movdqa_r2r ( xmm2, xmm3 );
+        pand_r2r   ( xmm7, xmm3 );
+
+        pand_r2r   ( xmm6, xmm0 );
+        pand_r2r   ( xmm6, xmm1 );
+        pand_r2r   ( xmm6, xmm2 );
+
+        psrlq_i2r  ( 8, xmm0 );
+        psrlq_i2r  ( 7, xmm1 );
+        psrlq_i2r  ( 8, xmm2 );
+
+        movdqa_r2r ( xmm0, xmm4 );
+        movdqa_r2r ( xmm2, xmm5 );
+        psllw_i2r  ( 1, xmm4 );
+        psllw_i2r  ( 1, xmm5 );
+        paddw_r2r  ( xmm4, xmm0 );
+        paddw_r2r  ( xmm5, xmm2 );
+
+        paddw_r2r  ( xmm0, xmm2 );
+        paddw_r2r  ( xmm1, xmm2 );
+
+        psllw_i2r  ( 5, xmm2 );
+        pand_r2r   ( xmm6, xmm2 );
+
+        por_r2r    ( xmm3, xmm2 );
+
+        movdqa_r2m( xmm2, *output );
+        output += 16;
+        t += 16;
+        b += 16;
+        m += 16;
+    }
+    output++; t++; b++; m++;
+    while( width-- ) {
+        *output = (3 * *t + 3 * *m + 2 * *b) >> 3;
+        output +=2; t+=2; b+=2; m+=2;
+    }
+}
+#endif
+
+#if defined(ARCH_X86) || defined(ARCH_X86_64)
+static void vfilter_chroma_332_packed422_scanline_sse2( uint8_t *output, int width,
+                                                             uint8_t *m, uint8_t *t, uint8_t *b )
+{
+    int i;
+
+    if (0 == (((unsigned int)output|(unsigned int)m|(unsigned int)t|(unsigned int)b) & 15)) {
+      vfilter_chroma_332_packed422_scanline_sse2_aligned(output, width, m, t, b);
+      return;
+    }
+
+    // Get width in bytes.
+    width *= 2;
+    i = width / 16;
+    width -= i * 16;
+
+    movdqa_m2r( dqwYMask, xmm7 );
+    movdqa_m2r( dqwCMask, xmm6 );
+
+    while( i-- ) {
+        movdqu_m2r ( *t, xmm0 );
+        movdqu_m2r ( *b, xmm1 );
+        movdqu_m2r ( *m, xmm2 );
+
+        movdqa_r2r ( xmm2, xmm3 );
+        pand_r2r   ( xmm7, xmm3 );
+
+        pand_r2r   ( xmm6, xmm0 );
+        pand_r2r   ( xmm6, xmm1 );
+        pand_r2r   ( xmm6, xmm2 );
+
+        psrlq_i2r  ( 8, xmm0 );
+        psrlq_i2r  ( 7, xmm1 );
+        psrlq_i2r  ( 8, xmm2 );
+
+        movdqa_r2r ( xmm0, xmm4 );
+        movdqa_r2r ( xmm2, xmm5 );
+        psllw_i2r  ( 1, xmm4 );
+        psllw_i2r  ( 1, xmm5 );
+        paddw_r2r  ( xmm4, xmm0 );
+        paddw_r2r  ( xmm5, xmm2 );
+
+        paddw_r2r  ( xmm0, xmm2 );
+        paddw_r2r  ( xmm1, xmm2 );
+
+        psllw_i2r  ( 5, xmm2 );
+        pand_r2r   ( xmm6, xmm2 );
+
+        por_r2r    ( xmm3, xmm2 );
+
+        movdqu_r2m( xmm2, *output );
+        output += 16;
+        t += 16;
+        b += 16;
+        m += 16;
+    }
+    output++; t++; b++; m++;
+    while( width-- ) {
+        *output = (3 * *t + 3 * *m + 2 * *b) >> 3;
+        output +=2; t+=2; b+=2; m+=2;
+    }
+}
+#endif
+
 
 static void vfilter_chroma_332_packed422_scanline_c( uint8_t *output, int width,
                                                      uint8_t *m, uint8_t *t, uint8_t *b )
@@ -2458,6 +2665,14 @@ void setup_speedy_calls( uint32_t accel, int verbose )
         if( verbose ) {
             printf( "speedycode: No MMX or MMXEXT support detected, using C fallbacks.\n" );
         }
+    }
+
+    if( speedy_accel & MM_ACCEL_X86_SSE2 ) {
+        if( verbose ) {
+            printf( "speedycode: Using SSE2 optimized functions.\n" );
+        }
+        diff_factor_packed422_scanline = diff_factor_packed422_scanline_sse2;
+        vfilter_chroma_332_packed422_scanline = vfilter_chroma_332_packed422_scanline_sse2;
     }
 #endif
 }

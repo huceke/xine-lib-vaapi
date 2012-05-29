@@ -78,6 +78,12 @@
 # define XINE_DEPRECATED
 #endif
 
+#ifdef SUPPORT_ATTRIBUTE_WEAK
+# define XINE_WEAK __attribute__((weak))
+#else
+# define XINE_WEAK
+#endif
+
 #ifndef __attr_unused
 # ifdef SUPPORT_ATTRIBUTE_UNUSED
 #  define __attr_unused __attribute__((__unused__))

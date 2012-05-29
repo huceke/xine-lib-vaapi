@@ -7,7 +7,7 @@
 #endif
 #include <errno.h>
 
-#include "xineintl.h"
+#include "xine/xineintl.h"
 
 /**
  * get error descriptions in DNS lookups
