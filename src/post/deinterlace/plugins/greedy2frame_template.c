@@ -87,12 +87,14 @@
 
 #if !defined(MASKS_DEFINED)
 #define MASKS_DEFINED
-  static const int64_t __attribute__((__used__)) Mask = 0x7f7f7f7f7f7f7f7fll;
-  static int64_t qwGreedyTwoFrameThreshold;
+static const mmx_t Mask = { uq: 0x7f7f7f7f7f7f7f7fll };
+#define TP GREEDYTWOFRAMETHRESHOLD, GREEDYTWOFRAMETHRESHOLD2
+static const mmx_t GreedyTwoFrameThreshold = { ub: {TP, TP, TP, TP} };
+#undef TP
 #endif
 
-#if defined(IS_SSE)
-static void DeinterlaceGreedy2Frame_SSE(uint8_t *output, int outstride,
+#if defined(IS_MMXEXT)
+static void DeinterlaceGreedy2Frame_MMXEXT(uint8_t *output, int outstride,
                                  deinterlace_frame_data_t *data,
                                  int bottom_field, int second_field, int width, int height )
 #elif defined(IS_3DNOW)
@@ -120,13 +122,6 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
     uint32_t Pitch = stride*2;
     uint32_t LineLength = stride;
     uint32_t PitchRest = Pitch - (LineLength >> 3)*8;
-
-    qwGreedyTwoFrameThreshold = GreedyTwoFrameThreshold;
-    qwGreedyTwoFrameThreshold += (GreedyTwoFrameThreshold2 << 8);
-    qwGreedyTwoFrameThreshold += (qwGreedyTwoFrameThreshold << 48) +
-                                (qwGreedyTwoFrameThreshold << 32) +
-                                (qwGreedyTwoFrameThreshold << 16);
-
 
     if( second_field ) {
         M1 = data->f0;
@@ -176,7 +171,6 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
         * See above for a description of the algorithm.
         * weave if (weave(M) AND (weave(T) OR weave(B)))
         */
-            ".align 8 \n\t"
             "movq %0, %%mm1			\n\t"     // T1
             "movq %1, %%mm0			\n\t"     // M1
             "movq %2, %%mm3			\n\t"     // B1
@@ -196,7 +190,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 	*/
 	    "movq %%mm3, %%mm7			\n\t" /* mm7 = B1 */
 
-#if defined(IS_SSE)
+#if defined(IS_MMXEXT)
             "pavgb %%mm1, %%mm7			\n\t"
 #elif defined(IS_3DNOW)
             "pavgusb %%mm1, %%mm7		\n\t"
@@ -215,7 +209,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 	  * which should make weave look better when there is small amounts of
 	  * movement
 	  */
-#if defined(IS_SSE)
+#if defined(IS_MMXEXT)
             "movq    %%mm0, %%mm4		\n\t"
             "movq    %%mm2, %%mm5		\n\t"
             "psubusb %%mm2, %%mm4		\n\t"
@@ -281,7 +275,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
  * and green where we are going to bob
  */
 #ifdef CHECK_BOBWEAVE
-#ifdef IS_SSE
+#ifdef IS_MMXEXT
             "movntq %%mm4, %0			\n\t"
 #else
             "movq %%mm4, %0			\n\t"
@@ -292,7 +286,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
             "pand    %%mm4, %%mm0		\n\t"
             "pandn   %%mm7, %%mm4		\n\t"
             "por     %%mm0, %%mm4		\n\t"
-#ifdef IS_SSE
+#ifdef IS_MMXEXT
             "movntq %%mm4, %0			\n\t"
 #else
             "movq %%mm4, %0			\n\t"
@@ -300,7 +294,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
 #endif
 
           : "=m" (*Dest2)
-          : "m" (*T0), "m" (*B0), "m" (qwGreedyTwoFrameThreshold) );
+          : "m" (*T0), "m" (*B0), "m" (GreedyTwoFrameThreshold) );
 
           /* Advance to the next set of pixels. */
           T1 += 8;
@@ -323,7 +317,7 @@ static void DeinterlaceGreedy2Frame_MMX(uint8_t *output, int outstride,
         B0 += PitchRest;
     }
 
-#ifdef IS_SSE
+#ifdef IS_MMXEXT
     asm("sfence\n\t");
 #endif
 

@@ -120,7 +120,7 @@ xine_t *xine_new (void) XINE_PROTECTED;
 /* allow the setting of some flags before xine_init
  * FIXME-ABI: this is currently GLOBAL
  */
-void xine_set_flags (xine_t *, int) XINE_PROTECTED __attribute__((weak));
+void xine_set_flags (xine_t *, int) XINE_PROTECTED XINE_WEAK;
 #define XINE_FLAG_NO_WRITE_CACHE		1
 
 /*

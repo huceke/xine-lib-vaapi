@@ -270,10 +270,12 @@ typedef	union {
 typedef	union {
 	int64_t			q[2];	/* Quadword (64-bit) value */
 	uint64_t		uq[2];	/* Unsigned Quadword */
-	short			w[8];	/* 4 Word (16-bit) values */
-	unsigned short		uw[8];	/* 4 Unsigned Word */
-	char			b[16];	/* 8 Byte (8-bit) values */
-	unsigned char		ub[16];	/* 8 Unsigned Byte */
+	int32_t			d[4];	/* Doubleword (32-bit) values */
+	uint32_t		ud[4];	/* Unsigned Doubleword */
+	short			w[8];	/* Word (16-bit) values */
+	unsigned short		uw[8];	/* Unsigned Word */
+	char			b[16];	/* Byte (8-bit) values */
+	unsigned char		ub[16];	/* Unsigned Byte */
 	float			sf[4];	/* Single-precision (32-bit) value */
 } ATTR_ALIGN(16) sse_t;	/* On a 16 byte (128-bit) boundary */
 
@@ -516,6 +518,10 @@ typedef	union {
 
 #define movdqu_m2r(var, reg)    mmx_m2r (movdqu, var, reg)
 #define movdqu_r2m(reg, var)    mmx_r2m (movdqu, reg, var)
+
+#define	pslldq_i2r(imm,reg)	mmx_i2r (pslldq, imm, reg)
+
+#define	psrldq_i2r(imm,reg)	mmx_i2r (psrldq, imm, reg)
 
 #define pshufd_m2r(var, reg, imm)   mmx_m2ri (pshufd, var, reg, imm)
 #define pshufd_r2r(regs, regd, imm)   mmx_r2ri (pshufd, regs, regd, imm)
