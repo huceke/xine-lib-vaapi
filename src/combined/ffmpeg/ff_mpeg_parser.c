@@ -134,7 +134,7 @@ static int parse_chunk (mpeg_parser_t *parser, int code, uint8_t *buffer, int le
     }
   }
 
-  is_frame_done = parser->in_slice && ((!next_code)  || (next_code == 0xb7));
+  is_frame_done = parser->in_slice && ((!next_code)  || (next_code >= 0xb0));
 
   if (is_frame_done)
     parser->in_slice = 0;
