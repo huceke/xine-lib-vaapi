@@ -26,12 +26,6 @@
 #ifndef ATTRIBUTE_H_
 #define ATTRIBUTE_H_
 
-#ifdef ATTRIBUTE_ALIGNED_MAX
-#define ATTR_ALIGN(align) __attribute__ ((__aligned__ ((ATTRIBUTE_ALIGNED_MAX < align) ? ATTRIBUTE_ALIGNED_MAX : align)))
-#else
-#define ATTR_ALIGN(align)
-#endif
-
 #ifdef XINE_COMPILE
 # include "configure.h"
 #else
@@ -55,6 +49,13 @@
 #  endif
 #  define SUPPORT_ATTRIBUTE_SENTINEL 1
 # endif
+#endif
+
+
+#ifdef ATTRIBUTE_ALIGNED_MAX
+#define ATTR_ALIGN(align) __attribute__ ((__aligned__ ((ATTRIBUTE_ALIGNED_MAX < align) ? ATTRIBUTE_ALIGNED_MAX : align)))
+#else
+#define ATTR_ALIGN(align)
 #endif
 
 /* Export protected only for libxine functions */
