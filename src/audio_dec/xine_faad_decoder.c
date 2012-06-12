@@ -250,8 +250,10 @@ static void faad_decode_audio ( faad_decoder_t *this, int end_frame ) {
         lprintf("NeAACDecDecode() returned rate=%"PRId32" channels=%d used=%d\n",
                 this->rate, this->num_channels, used);
 
-        this->stream->audio_out->close (this->stream->audio_out, this->stream);
-        this->output_open = 0;
+        if (this->output_open) {
+          this->stream->audio_out->close (this->stream->audio_out, this->stream);
+          this->output_open = 0;
+        }
         faad_open_output( this );
 
         faad_meta_info_set( this );

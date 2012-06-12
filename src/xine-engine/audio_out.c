@@ -2307,7 +2307,7 @@ xine_audio_port_t *_x_ao_new_port (xine_t *xine, ao_driver_t *driver,
     this->audio_loop_running = 1;
 
     pthread_attr_init(&pth_attrs);
-#ifdef _POSIX_THREAD_PRIORITY_SCHEDULING
+#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
     pthread_attr_setscope(&pth_attrs, PTHREAD_SCOPE_SYSTEM);
 #endif
 

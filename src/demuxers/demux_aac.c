@@ -91,7 +91,7 @@ static int open_aac_file(demux_aac_t *this) {
     return 0;
 
   /* Check for an ADIF header - should be at the start of the file */
-  if (_x_is_fourcc(peak, "AIDF")) {
+  if (_x_is_fourcc(peak, "ADIF")) {
     lprintf("found ADIF header\n");
     return 1;
   }

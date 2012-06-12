@@ -143,12 +143,20 @@ struct ff_video_decoder_s {
 static void ff_check_colorspace (ff_video_decoder_t *this) {
   int i, cm;
 
+#ifdef AVCODEC_HAS_COLORSPACE
   cm = this->context->colorspace << 1;
+#else
+  cm = 0;
+#endif
+
   /* ffmpeg bug: color_range not set by svq3 decoder */
   i = this->context->pix_fmt;
-  if (cm && ((i == PIX_FMT_YUVJ420P) || (i == PIX_FMT_YUVJ444P) ||
-    (this->context->color_range == AVCOL_RANGE_JPEG)))
+  if (cm && ((i == PIX_FMT_YUVJ420P) || (i == PIX_FMT_YUVJ444P)))
     cm |= 1;
+#ifdef AVCODEC_HAS_COLORSPACE
+  if (this->context->color_range == AVCOL_RANGE_JPEG)
+    cm |= 1;
+#endif
 
   /* report changes of colorspyce and/or color range */
   if (cm != this->color_matrix) {
@@ -460,9 +468,10 @@ static void init_video_codec (ff_video_decoder_t *this, unsigned int codec_type)
       break;
   }
 
+#ifdef AVCODEC_HAS_REORDERED_OPAQUE
   /* dont want initial AV_NOPTS_VALUE here */
   this->context->reordered_opaque = 0;
-
+#endif
 }
 
 static void choose_speed_over_accuracy_cb(void *user_data, xine_cfg_entry_t *entry) {

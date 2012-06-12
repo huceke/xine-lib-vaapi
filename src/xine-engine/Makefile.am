@@ -15,7 +15,7 @@ EXTRA_DIST = lrb.c lrb.h accel_vdpau.h accel_xvmc.h
 
 if WIN32
 DEF_FILE = libxine-$(XINE_MAJOR).def
-def_ldflags=-Wl,--output-def,$(DEF_FILE) $(LDFLAGS_NOUNDEFINED)
+def_ldflags=-Wl,--output-def,$(DEF_FILE)
 else
 DEF_FILE =
 endif
@@ -45,7 +45,7 @@ libxine_la_LIBADD = $(PTHREAD_LIBS) $(DYNAMIC_LD_LIBS) $(LTLIBINTL) $(ZLIB_LIBS)
                     $(LIBXINEPOSIX) $(RT_LIBS) $(NET_LIBS) $(XDG_BASEDIR_LIBS) \
                     $(AVUTIL_LIBS)
 
-libxine_la_LDFLAGS = $(AM_LDFLAGS) $(def_ldflags) $(GCSECTIONS) \
+libxine_la_LDFLAGS = $(LDFLAGS_NOUNDEFINED) $(AM_LDFLAGS) $(def_ldflags) $(GCSECTIONS) \
 	-weak libxine-interface.la \
 	-version-info $(XINE_LT_CURRENT):$(XINE_LT_REVISION):$(XINE_LT_AGE)
 
@@ -69,8 +69,9 @@ $(YUV_LIB):
 
 if WIN32
 install-exec-local:
-	cp -p $(DEF_FILE) $(DESTDIR)$(libdir)
+	-cp -p $(DEF_FILE) $(DESTDIR)$(libdir)
 endif
 
 uninstall-local:
-	rm -f $(DEF_FILE) "$(DESTDIR)$(libdir)"/libxine-interface.la
+	rm -f "$(DESTDIR)$(libdir)"/libxine-interface.la
+	-rm -f $(DESTDIR)$(libdir)/$(DEF_FILE)

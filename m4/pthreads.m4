@@ -19,6 +19,7 @@ AC_DEFUN([CC_PTHREAD_FLAGS], [
   if test "${PTHREAD_CFLAGS-unset}" = "unset"; then
      case $host in
        *-mingw*)  PTHREAD_CFLAGS=""		;;
+       *-cygwin*) PTHREAD_CFLAGS=""		;;
        *-hpux11*) PTHREAD_CFLAGS=""		;;
        *-darwin*) PTHREAD_CFLAGS=""		;;
        *-solaris*|*-linux-gnu)
@@ -31,6 +32,7 @@ AC_DEFUN([CC_PTHREAD_FLAGS], [
   if test "${PTHREAD_LIBS-unset}" = "unset"; then
      case $host in
        *-mingw*)  PTHREAD_LIBS="-lpthreadGC2"	;;
+       *-cygwin*) PTHREAD_LIBS="-lpthread"	;;
        *-hpux11*) PTHREAD_LIBS="-lpthread"	;;
        *-darwin*) PTHREAD_LIBS=""		;;
        *-solaris*)

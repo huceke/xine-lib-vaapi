@@ -519,7 +519,7 @@ int _x_video_decoder_init (xine_stream_t *stream) {
   } else {
 
     pthread_attr_t       pth_attrs;
-#ifdef _POSIX_THREAD_PRIORITY_SCHEDULING
+#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
     struct sched_param   pth_params;
 #endif
     int		       err, num_buffers;
@@ -550,7 +550,7 @@ int _x_video_decoder_init (xine_stream_t *stream) {
     stream->spu_track_map_entries = 0;
 
     pthread_attr_init(&pth_attrs);
-#ifdef _POSIX_THREAD_PRIORITY_SCHEDULING
+#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
     pthread_attr_getschedparam(&pth_attrs, &pth_params);
     pth_params.sched_priority = sched_get_priority_min(SCHED_OTHER);
     pthread_attr_setschedparam(&pth_attrs, &pth_params);

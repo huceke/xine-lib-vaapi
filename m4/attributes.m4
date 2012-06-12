@@ -114,7 +114,7 @@ AC_DEFUN([CC_NOUNDEFINED], [
      dnl use it only for libraries in mingw32-w64 
 
      *-freebsd* | *-openbsd*) ;;
-     *-mingw*)
+     *-mingw* | *-cygwin*)
         LDFLAGS_NOUNDEFINED="-no-undefined"
         ;;
      *)

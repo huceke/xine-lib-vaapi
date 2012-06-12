@@ -1224,6 +1224,8 @@ static vo_driver_t *open_plugin_2 (video_driver_class_t *class_gen, const void *
   XvAdaptorInfo        *adaptor_info;
   unsigned int          adaptor_num;
   xv_prefertype		prefer_type;
+  unsigned int          nencode = 0;
+  XvEncodingInfo       *encodings = NULL;
 
   this = (xv_driver_t *) calloc(1, sizeof(xv_driver_t));
   if (!this)
@@ -1499,6 +1501,26 @@ static vo_driver_t *open_plugin_2 (video_driver_class_t *class_gen, const void *
     LOCK_DISPLAY(this);
     XFree(fo);
     UNLOCK_DISPLAY(this);
+  }
+
+  /*
+   * check max. supported image size
+   */
+
+  XvQueryEncodings(this->display, xv_port, &nencode, &encodings);
+  if (encodings) {
+    int n;
+    for (n = 0; n < nencode; n++) {
+      if (!strcmp(encodings[n].name, "XV_IMAGE")) {
+        xprintf(this->xine, XINE_VERBOSITY_LOG,
+                LOG_MODULE ": max XvImage size %li x %li\n",
+                encodings[n].width, encodings[n].height);
+        this->props[VO_PROP_MAX_VIDEO_WIDTH].value  = encodings[n].width;
+        this->props[VO_PROP_MAX_VIDEO_HEIGHT].value = encodings[n].height;
+        break;
+      }
+    }
+    XvFreeEncodingInfo(encodings);
   }
 
   /*

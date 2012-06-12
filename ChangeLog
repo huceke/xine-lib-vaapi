@@ -1,7 +1,12 @@
-xine-lib (1.2.1.1) 2012-??-??
+xine-lib (1.2.2) 2012-06-09
   * Fix musepack decoder compilation if libmpcdec headers aren't available.
   * Configure tests for xinerama & VideoCD support now soft-fail properly.
   * The DVB plugin is working again.
+  * OpenGL OSD fix.
+  * YUV conversion MMX/SSE optimisations.
+  * YUV420 H.264 is playable now; YUVJ444P is correctly handled.
+  * Support FLAC in Matroska; support BMP.
+  * Various build fixes for Windows.
 
 xine-lib (1.2.1) 2012-02-04
   * The "I'm at Tyneside LUG" release.
@@ -82,18 +87,20 @@ xine-lib (1.2.0) 2012-01-01
   * Report more video output capabilities via (port)->get_capabilities():
     colour controls, zooming, colour keying.
 
-xine-lib (1.1.21) ????-??-??
-  * mpeg-ts fixes and enhancements
+xine-lib (1.1.21) 2012-06-09
+  * Fix a potential double-free (goom) when playing AAC files.
+  * Fix a possible clean-up crash in the goom FFT code.
+  * Fix matroska header compression.
+  * MPEG-TS fixes and enhancements
   * Improved syncing of DVB subtitles
   * BluRay support (requires libbluray)
   * Fix full range YUV (with ffmpeg codecs)
   * Fix multithreading with recent ffmpeg versions
   * Fix cropping with ffmpeg codecs
   * Fix OSD when using OpenGL video output
-
-xine-lib (1.1.20.2) ????-??-??
+  * xine-list no longer causes catalog.cache to be written.
+  * Windows-related (cygwin, mingw) build fixes.
   * Various bug fixes.
-  * Fix matroska header compression.
 
 xine-lib (1.1.20.1) 2012-01-01
   * Various bug fixes.

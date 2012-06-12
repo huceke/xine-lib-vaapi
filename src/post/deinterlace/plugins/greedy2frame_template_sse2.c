@@ -84,11 +84,12 @@
 **   B0    |         |    B1   |         |
 */
 
-
+#if defined(ARCH_X86) || defined(ARCH_X86_64)
 static const sse_t Mask128 = { uq: { 0x7f7f7f7f7f7f7f7fll, 0x7f7f7f7f7f7f7f7fll} };
 #define TP GREEDYTWOFRAMETHRESHOLD, GREEDYTWOFRAMETHRESHOLD2
 static const sse_t GreedyTwoFrameThreshold128 = { ub: {TP, TP, TP, TP, TP, TP, TP, TP} };
 #undef TP
+#endif
 
 static void DeinterlaceGreedy2Frame_SSE2(uint8_t *output, int outstride,
                                          deinterlace_frame_data_t *data,

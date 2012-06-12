@@ -41,6 +41,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <sys/socket.h>
 
 #if HAVE_EXECINFO_H
@@ -55,8 +56,7 @@
 #include <langinfo.h>
 #endif
 
-#if defined(__CYGWIN__) || defined(WIN32)
-#include <ctype.h>
+#if defined(WIN32)
 #include <windows.h>
 #endif
 
