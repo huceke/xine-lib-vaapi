@@ -66,12 +66,11 @@ static int demux_image_get_status (demux_plugin_t *this_gen) {
   return this->status;
 }
 
-static int demux_image_next (demux_plugin_t *this_gen, int preview) {
+static int demux_image_next (demux_plugin_t *this_gen, int preview, int first_fragment) {
   demux_image_t *this = (demux_image_t *) this_gen;
   buf_element_t *buf = this->video_fifo->buffer_pool_alloc (this->video_fifo);
 
   buf->content = buf->mem;
-  buf->type = this->buf_type;
 
   buf->size = this->input->read (this->input, (char *)buf->mem, buf->max_size-1);
 
@@ -80,9 +79,17 @@ static int demux_image_next (demux_plugin_t *this_gen, int preview) {
     buf->decoder_flags |= BUF_FLAG_FRAME_END;
     this->status = DEMUX_FINISHED;
   } else {
+    if (first_fragment &&
+        ( memcmp (buf->content, "\377\330\377", 3) == 0 || /* JPEG */
+          (_X_BE_16(&buf->content[0]) == 0xffd8))) {        /* another JPEG */
+          fprintf(stderr, "JPEG\n");
+          this->buf_type = BUF_VIDEO_JPEG;
+        }
+
     this->status = DEMUX_OK;
   }
 
+  buf->type = this->buf_type;
   if (preview)
     buf->decoder_flags = BUF_FLAG_PREVIEW;
 
@@ -92,7 +99,7 @@ static int demux_image_next (demux_plugin_t *this_gen, int preview) {
 }
 
 static int demux_image_send_chunk (demux_plugin_t *this_gen) {
-  return demux_image_next(this_gen, 0);
+  return demux_image_next(this_gen, 0, 0);
 }
 
 static void demux_image_send_headers (demux_plugin_t *this_gen) {
@@ -105,7 +112,8 @@ static void demux_image_send_headers (demux_plugin_t *this_gen) {
   this->input->seek (this->input, 0, SEEK_SET);
 
   /* we can send everything here. this makes image decoder a lot easier */
-  while (demux_image_next(this_gen,1) == DEMUX_OK);
+  demux_image_next(this_gen, 1, 1);
+  while (demux_image_next(this_gen, 1, 0) == DEMUX_OK);
 
   this->status = DEMUX_OK;
 
@@ -158,6 +166,7 @@ static demux_plugin_t *open_plugin (demux_class_t *class_gen,
       return NULL;
     }
     if (memcmp (header, "GIF", 3) == 0 /* GIF */
+        || memcmp (header, "BM", 2) == 0 /* BMP */
         || memcmp (header, "\377\330\377", 3) == 0 /* JPEG */
 	|| (_X_BE_16(&header[0]) == 0xffd8) /* another JPEG */
 	|| memcmp (header, "\x89PNG", 4) == 0) { /* PNG */
@@ -213,7 +222,7 @@ static void *init_class (xine_t *xine, void *data) {
   this->demux_class.description     = N_("image demux plugin");
   this->demux_class.identifier      = "imagedmx";
   this->demux_class.mimetypes       = NULL;
-  this->demux_class.extensions      = "png gif jpg jpeg";
+  this->demux_class.extensions      = "png gif jpg jpeg bmp";
   this->demux_class.dispose         = default_demux_class_dispose;
 
   lprintf("class opened\n");

@@ -153,10 +153,13 @@ fft_t *fft_new (int bits)
 
 void fft_dispose(fft_t *fft)
 {
-  free(fft->SineTable);
-  free(fft->CosineTable);
-  free(fft->WinTable);
-  free(fft);
+  if (fft)
+  {
+    free(fft->SineTable);
+    free(fft->CosineTable);
+    free(fft->WinTable);
+    free(fft);
+  }
 }
 
 /*

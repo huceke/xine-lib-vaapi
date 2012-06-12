@@ -226,6 +226,9 @@ static void demux_mng_send_headers(demux_mng_t *this){
   /* send start buffers */
   _x_demux_control_start(this->stream);
 
+  /* required when loop playing short streams (gapless switch) */
+  _x_demux_control_newpts(this->stream, 0, 0);
+
   /* send init info to decoder */
   this->bih.biBitCount = 24;
   buf = this->video_fifo->buffer_pool_alloc(this->video_fifo);

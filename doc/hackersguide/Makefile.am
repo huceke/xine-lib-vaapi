@@ -60,15 +60,20 @@ endif
 	$(AM_V_at)$(SED) -i -e '/<img [^>]*alt=/! s/<img /<img alt="" /g' $@ # we want valid XHTML 1.1
 
 if HAVE_RSVG
+if HAVE_RSVG_CONVERT
+.svg.png:
+	$(AM_V_GEN)rsvg-convert -f png -o $@ $^
+else
 .svg.png:
 	$(AM_V_GEN)rsvg -f png $^ $@
+endif
 if HAVE_OPTIPNG
 	$(AM_V_at)optipng -quiet $@
 endif
 else
 .svg.png:
 	$(AM_V_FAKE)if test x"$(fail_if_missing)" = x"yes"; then \
-	  echo "Please install rsvg."; \
+	  echo "Please install rsvg-convert."; \
 	  exit 1; \
 	fi; \
 	if test x"$(fail_if_missing)" != x"yes"; then \

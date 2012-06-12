@@ -266,7 +266,9 @@ struct xine_video_port_s {
 #define VO_PROP_NOISE_REDUCTION       25
 #define VO_PROP_BUFS_TOTAL            26 /* read-only */
 #define VO_PROP_BUFS_FREE             27 /* read-only */
-#define VO_NUM_PROPERTIES             28
+#define VO_PROP_MAX_VIDEO_WIDTH       28 /* read-only */
+#define VO_PROP_MAX_VIDEO_HEIGHT      29 /* read-only */
+#define VO_NUM_PROPERTIES             30
 
 /* number of colors in the overlay palette. Currently limited to 256
    at most, because some alphablend functions use an 8-bit index into

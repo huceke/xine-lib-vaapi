@@ -261,7 +261,7 @@
 
     } streamType;
 
-#define WRAP_THRESHOLD       270000
+#define WRAP_THRESHOLD       360000
 
 #define PTS_AUDIO 0
 #define PTS_VIDEO 1
