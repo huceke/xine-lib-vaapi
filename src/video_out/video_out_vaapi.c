@@ -71,6 +71,11 @@
 
 #include "accel_vaapi.h"
 
+#ifndef VA_SURFACE_ATTRIB_SETTABLE
+#define vaCreateSurfaces(d, f, w, h, s, ns, a, na) \
+    vaCreateSurfaces(d, w, h, f, ns, s)
+#endif
+
 #define  RENDER_SURFACES  50
 #define  SOFT_SURFACES    3
 #define  SW_WIDTH         1920
@@ -1835,7 +1840,7 @@ static VAStatus vaapi_init_soft_surfaces(vo_driver_t *this_gen, int width, int h
 
   vaapi_destroy_soft_surfaces(this_gen);
 
-  vaStatus = vaCreateSurfaces(va_context->va_display, width, height, VA_RT_FORMAT_YUV420, SOFT_SURFACES, va_soft_surface_ids);
+  vaStatus = vaCreateSurfaces(va_context->va_display, VA_RT_FORMAT_YUV420, width, height, va_soft_surface_ids, SOFT_SURFACES, NULL, 0);
   if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaces()"))
     goto error;
 
@@ -1935,7 +1940,7 @@ static VAStatus vaapi_init_internal(vo_driver_t *this_gen, int va_profile, int w
   xprintf(this->xine, XINE_VERBOSITY_LOG, LOG_MODULE " vaapi_init : Context width %d height %d\n", va_context->width, va_context->height);
 
   /* allocate decoding surfaces */
-  vaStatus = vaCreateSurfaces(va_context->va_display, va_context->width, va_context->height, VA_RT_FORMAT_YUV420, RENDER_SURFACES, va_surface_ids);
+  vaStatus = vaCreateSurfaces(va_context->va_display, VA_RT_FORMAT_YUV420, va_context->width, va_context->height, va_surface_ids, RENDER_SURFACES, NULL, 0);
   if(!vaapi_check_status(this_gen, vaStatus, "vaCreateSurfaces()"))
     goto error;
 
