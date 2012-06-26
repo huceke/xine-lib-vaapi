@@ -102,6 +102,7 @@ typedef struct {
   XvImage           *image;
   XShmSegmentInfo    shminfo;
 
+  int                req_width, req_height;
 } xv_frame_t;
 
 
@@ -443,8 +444,8 @@ static void xv_update_frame_format (vo_driver_t *this_gen,
     width = (width + 7) & ~0x7;
   }
 
-  if ((frame->width != width)
-      || (frame->height != height)
+  if ((frame->req_width != width)
+      || (frame->req_height != height)
       || (frame->format != format)) {
 
     /* printf (LOG_MODULE ": updating frame to %d x %d (ratio=%d, format=%08x)\n",width,height,ratio_code,format); */
@@ -475,12 +476,20 @@ static void xv_update_frame_format (vo_driver_t *this_gen,
       frame->vo_frame.base[2] = frame->image->data + frame->image->offsets[1];
     }
 
-    frame->width  = width;
-    frame->height = height;
+    /* allocated frame size may not match requested size */
+    frame->req_width  = width;
+    frame->req_height = height;
+    frame->width  = frame->image->width;
+    frame->height = frame->image->height;
     frame->format = format;
 
     UNLOCK_DISPLAY(this);
   }
+
+  if (frame->vo_frame.width > frame->width)
+    frame->vo_frame.width  = frame->width;
+  if (frame->vo_frame.height > frame->height)
+    frame->vo_frame.height = frame->height;
 
   frame->ratio = ratio;
 }

@@ -32,6 +32,7 @@ AC_DEFUN([XINE_LIB_SUMMARY], [
     test x"$have_v4l2" = x"yes"     && echo "   - v4l2"
     echo "   - cdda"
     test x"$have_libbluray" = x"yes" && echo "   - bluray"
+    echo "   - test"
     echo ""
 
     dnl Demuxers
@@ -78,6 +79,7 @@ AC_DEFUN([XINE_LIB_SUMMARY], [
     test x"$have_dxr3" = x"yes"        && echo "   - dxr3_video"
     test x"$have_gdkpixbuf" = x"yes"   && echo "   - gdk-pixbuf"
     test x"$have_imagemagick" = x"yes" && echo "   - image"
+    test x"$have_libjpeg" = x"yes"     && echo "   - libjpeg"
     test x"$have_theora" = x"yes"      && echo "   - theora"
     test x"$have_w32dll" = x"yes"      && echo "   - w32dll"
     test x"$have_vdpau" = x"yes"       && echo "   - vdpau"

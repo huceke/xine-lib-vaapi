@@ -68,6 +68,7 @@ endif
 
 xineplug_LTLIBRARIES = \
 	xineplug_inp_file.la \
+	xineplug_inp_test.la \
 	xineplug_inp_http.la \
 	xineplug_inp_dvd.la \
 	$(in_vcd) \
@@ -89,6 +90,11 @@ xineplug_LTLIBRARIES = \
 
 xineplug_inp_file_la_SOURCES = input_file.c
 xineplug_inp_file_la_LIBADD = $(XINE_LIB) $(LTLIBINTL)
+
+xineplug_inp_test_la_SOURCES = input_test.c
+xineplug_inp_test_la_LIBADD = $(XINE_LIB) $(LTLIBINTL)
+xineplug_inp_test_la_CFLAGS = $(VISIBILITY_FLAG) $(AM_CFLAGS)
+xineplug_inp_test_la_LDFLAGS = $(xineplug_ldflags)
 
 xineplug_inp_dvd_la_SOURCES = input_dvd.c media_helper.c
 xineplug_inp_dvd_la_LIBADD = $(XINE_LIB) $(link_dvdnav) $(PTHREAD_LIBS) $(DYNAMIC_LD_LIBS)

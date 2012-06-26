@@ -1721,13 +1721,13 @@ static void ff_reset (video_decoder_t *this_gen) {
 
   if(this->context && this->decoder_ok)
   {
-    xine_list_iterator_t it;
+    xine_list_iterator_t it = NULL;
 
     avcodec_flush_buffers(this->context);
 
     /* frame garbage collector here - workaround for buggy ffmpeg codecs that
      * don't release their DR1 frames */
-    while( (it = xine_list_front(this->dr1_frames)) != NULL )
+    while ((it = xine_list_next (this->dr1_frames, it)) != NULL)
     {
       vo_frame_t *img = (vo_frame_t *)xine_list_get_value(this->dr1_frames, it);
       if (img)
@@ -1791,7 +1791,7 @@ static void ff_dispose (video_decoder_t *this_gen) {
   lprintf ("ff_dispose\n");
 
   if (this->decoder_ok) {
-    xine_list_iterator_t it;
+    xine_list_iterator_t it = NULL;
 
     pthread_mutex_lock(&ffmpeg_lock);
     avcodec_close (this->context);
@@ -1799,7 +1799,7 @@ static void ff_dispose (video_decoder_t *this_gen) {
 
     /* frame garbage collector here - workaround for buggy ffmpeg codecs that
      * don't release their DR1 frames */
-    while( (it = xine_list_front(this->dr1_frames)) != NULL )
+    while ((it = xine_list_next (this->dr1_frames, it)) != NULL)
     {
       vo_frame_t *img = (vo_frame_t *)xine_list_get_value(this->dr1_frames, it);
       if (img)
