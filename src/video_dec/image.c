@@ -102,7 +102,7 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
   this->index += buf->size;
 
   if (buf->decoder_flags & BUF_FLAG_FRAME_END) {
-    int                width, height, i;
+    int                width, height, i, x, y, img_stride;
     int                status;
     MagickWand        *wand;
     uint8_t           *img_buf, *img_buf_ptr;
@@ -133,9 +133,10 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
       return;
     }
 
-    width = MagickGetImageWidth(wand) & ~1; /* must be even for init_yuv_planes */
+    width = MagickGetImageWidth(wand);
     height = MagickGetImageHeight(wand);
     img_buf = malloc(width * height * 3);
+    img_stride = 3 * width;
 #if MAGICK_VERSION < 0x671
     MagickGetImagePixels(wand, 0, 0, width, height, "RGB", CharPixel, img_buf);
     DestroyMagickWand(wand);
@@ -152,12 +153,29 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
     lprintf("image loaded successfully\n");
 
     /*
+     * alloc video frame and set cropping
+     */
+    img = this->stream->video_out->get_frame (this->stream->video_out, width, height,
+					      (double)width / (double)height,
+					      XINE_IMGFMT_YUY2,
+					      VO_BOTH_FIELDS);
+
+    if (width > img->width)
+      width = img->width;
+    if (height > img->height)
+      height = img->height;
+    img->ratio = (double)width / (double)height;
+
+    /*
      * rgb data -> yuv_planes
      */
+    width &= ~1; /* must be even for init_yuv_planes */
     init_yuv_planes(&yuv_planes, width, height);
 
     img_buf_ptr = img_buf;
-    for (i=0; i < width*height; i++) {
+    i = 0;
+    for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
       uint8_t r = *(img_buf_ptr++);
       uint8_t g = *(img_buf_ptr++);
       uint8_t b = *(img_buf_ptr++);
@@ -165,16 +183,15 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
       yuv_planes.y[i] = COMPUTE_Y(r, g, b);
       yuv_planes.u[i] = COMPUTE_U(r, g, b);
       yuv_planes.v[i] = COMPUTE_V(r, g, b);
+      i++;
+    }
+    img_buf_ptr += img_stride - 3 * width;
     }
     free(img_buf);
 
     /*
-     * alloc and draw video frame
+     * draw video frame
      */
-    img = this->stream->video_out->get_frame (this->stream->video_out, width,
-					      height, (double)width/(double)height,
-					      XINE_IMGFMT_YUY2,
-					      VO_BOTH_FIELDS);
     img->pts = buf->pts;
     img->duration = 3600;
     img->bad_frame = 0;
@@ -295,7 +312,7 @@ static const uint32_t supported_types[] = { BUF_VIDEO_IMAGE, BUF_VIDEO_JPEG, 0 }
 
 static const decoder_info_t dec_info_image = {
   supported_types,     /* supported types */
-  6                    /* priority        */
+  7                    /* priority        */
 };
 
 const plugin_info_t xine_plugin_info[] EXPORTED = {

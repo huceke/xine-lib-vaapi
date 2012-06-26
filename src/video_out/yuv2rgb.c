@@ -1248,6 +1248,42 @@ static void scale_line_1_2 (uint8_t *source, uint8_t *dest,
   xine_profiler_stop_count(prof_scale_line);
 }
 
+/* Interpolate 4 output pixels from 5 source pixels (1280x720 -> 1024x576). */
+/* *   *   *   *   * */
+/* *    *    *    *  */
+
+static void scale_line_5_4 (uint8_t *source, uint8_t *dest, int width, int step) {
+  int p1, p2, p3, p4, p5;
+
+  xine_profiler_start_count(prof_scale_line);
+
+  while ((width -= 4) >= 0) {
+    *dest++ = *source++;
+    p1 = *source++;
+    p2 = *source++;
+    *dest++ = p1 + ((p2 - p1) >> 2);
+    p3 = *source++;
+    p4 = *source++;
+    /* the middle pixel loses most sharpness, so do that one cubic */
+    p5 = (9 * (p2 + p3) - p1 - p4) >> 4;
+    *dest++ = p5 & 0x100 ? ~(p5 >> 9) : p5;
+    *dest++ = p4 + ((p3 - p4) >> 2);
+  }
+
+  if ((width += 4) <= 0) goto done;
+  *dest++ = *source++;
+  if (--width <= 0) goto done;
+  p1 = *source++;
+  p2 = *source++;
+  *dest++ = p1 + ((p2 - p1) >> 2);
+  if (--width <= 0) goto done;
+  p1 = *source;
+  *dest++ = (p1 + p2) >> 1;
+ done:
+
+  xine_profiler_stop_count(prof_scale_line);
+}
+
 
 /*
  * Scale line with no horizontal scaling. For NTSC mpeg2 dvd input in
@@ -1279,6 +1315,7 @@ static scale_line_func_t find_scale_line_func(int step) {
     {  3,  4, scale_line_3_4,   "svcd 4:3(ntsc)" },
     {  1,  2, scale_line_1_2,   "2*zoom" },
     {  1,  1, scale_line_1_1,   "non-scaled" },
+    {  5,  4, scale_line_5_4,   "hd720p, fullscreen(1024x576)" },
   };
   size_t i;
 #ifdef	LOG

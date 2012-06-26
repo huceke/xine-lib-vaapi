@@ -112,6 +112,21 @@ AC_DEFUN([XINE_DECODER_PLUGINS], [
     fi
     AM_CONDITIONAL([ENABLE_GDK_PIXBUF], [test x"$have_gdkpixbuf" = x"yes"])
 
+    dnl libjpeg (optional; enabled by default)
+    AC_ARG_ENABLE([libjpeg],
+                  [AS_HELP_STRING([--enable-libjpeg], [Enable libjpeg support (default: enabled)])],
+                  [test x"$enableval" != x"no" && enable_libjpeg="yes"])
+    if test x"$enable_libjpeg" != x"no"; then
+        AC_CHECK_LIB([jpeg], [jpeg_start_decompress],
+                     [AC_CHECK_HEADERS([jpeglib.h], [have_libjpeg=yes], [have_libjpeg=no])], [have_libjpeg=no])
+        if test x"$enable_libjpeg" = x"yes" && test x"$have_libjpeg" != x"yes"; then
+             AC_MSG_ERROR([libjpeg support requested, but libjpeg not found])
+        elif test x"$have_libjpeg" = x"yes"; then
+            JPEG_LIBS="-ljpeg"
+            AC_SUBST(JPEG_LIBS)
+        fi
+    fi
+    AM_CONDITIONAL([ENABLE_LIBJPEG], [test x"$have_libjpeg" = x"yes"])
 
     dnl ImageMagick (optional; enabled by default)
     AC_ARG_WITH([imagemagick],

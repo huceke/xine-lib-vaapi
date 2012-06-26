@@ -1286,6 +1286,7 @@ static void code_to_text (char ascii[5], uint32_t code)
     ascii[i] = (byte < ' ') ? ' ' : (byte >= 0x7F) ? '.' : (char) byte;
     code >>= 8;
   }
+  ascii[4] = 0;
 }
 
 void _x_report_video_fourcc (xine_t *xine, const char *module, uint32_t code)

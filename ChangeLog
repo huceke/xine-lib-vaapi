@@ -1,3 +1,11 @@
+xine-lib (1.2.3) ????-??-??
+  * Add test image generator input plugin
+  * Add fast libjpeg based JPEG decoder
+  * Add max. Xv image size detection to Xv video output plugin
+
+xine-lib (1.1.22) ????-??-??
+  * Fix segfault when trying to display large images with Xv output plugins
+
 xine-lib (1.2.2) 2012-06-09
   * Fix musepack decoder compilation if libmpcdec headers aren't available.
   * Configure tests for xinerama & VideoCD support now soft-fail properly.

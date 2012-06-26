@@ -133,8 +133,24 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
     lprintf("image loaded successfully\n");
 
     /*
+     * alloc video frame
+     */
+    img = this->stream->video_out->get_frame (this->stream->video_out, width, height,
+					      (double)width / (double)height,
+					      XINE_IMGFMT_YUY2,
+					      VO_BOTH_FIELDS);
+
+    /* crop if allocated frame is smaller than requested */
+    if (width > img->width)
+      width = img->width;
+    if (height > img->height)
+      height = img->height;
+    img->ratio = (double)width / (double)height;
+
+    /*
      * rgb data -> yuv_planes
      */
+    width &= ~1; /* must be even for init_yuv_planes */
     init_yuv_planes(&yuv_planes, width, height);
 
     n_channels = gdk_pixbuf_get_n_channels (pixbuf);
@@ -155,12 +171,8 @@ static void image_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
     gdk_pixbuf_unref (pixbuf);
 
     /*
-     * alloc and draw video frame
+     * draw video frame
      */
-    img = this->stream->video_out->get_frame (this->stream->video_out, width,
-					      height, (double)width/(double)height,
-					      XINE_IMGFMT_YUY2,
-					      VO_BOTH_FIELDS);
     img->pts = buf->pts;
     img->duration = 3600;
     img->bad_frame = 0;
@@ -289,7 +301,7 @@ static const uint32_t supported_types[] = { BUF_VIDEO_IMAGE, BUF_VIDEO_JPEG, 0 }
 
 static const decoder_info_t dec_info_image = {
   supported_types,     /* supported types */
-  7                    /* priority        */
+  8                    /* priority        */
 };
 
 const plugin_info_t xine_plugin_info[] EXPORTED = {
