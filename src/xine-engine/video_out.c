@@ -537,13 +537,17 @@ static int vo_grab_grab_video_frame (xine_grab_video_frame_t *frame_gen) {
 
   /* initialize yuv2rgb factory */
   if (!frame->yuv2rgb_factory) {
+    int cm = VO_GET_FLAGS_CM (vo_frame->flags);
     frame->yuv2rgb_factory = yuv2rgb_factory_init(MODE_24_RGB, 0, NULL);
     if (!frame->yuv2rgb_factory) {
       vo_frame_dec_lock(vo_frame);
       return -1; /* error happened */
     }
-    frame->yuv2rgb_factory->matrix_coefficients = 1; /* ITU-R Rec. 709 (1990) */
-    frame->yuv2rgb_factory->set_csc_levels (frame->yuv2rgb_factory, 0, 128, 128);
+    if ((cm >> 1) == 2) /* color matrix undefined */
+      cm = (cm & 1) | (vo_frame->height - vo_frame->crop_top - vo_frame->crop_bottom >= 720 ? 2 : 10);
+    else if ((cm >> 1) == 0) /* converted RGB source, always ITU 601 */
+      cm = (cm & 1) | 10;
+    frame->yuv2rgb_factory->set_csc_levels (frame->yuv2rgb_factory, 0, 128, 128, cm);
   }
 
   /* retrieve a yuv2rgb converter */

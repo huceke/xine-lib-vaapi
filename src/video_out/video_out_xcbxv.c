@@ -31,6 +31,12 @@
  * ported to xcb by Christoph Pfister - Feb 2007
  */
 
+#define LOG_MODULE "video_out_xcbxv"
+#define LOG_VERBOSE
+/*
+#define LOG
+*/
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -50,12 +56,6 @@
 #include <sys/time.h>
 
 #include <xcb/xv.h>
-
-#define LOG_MODULE "video_out_xcbxv"
-#define LOG_VERBOSE
-/*
-#define LOG
-*/
 
 #include "xine.h"
 #include <xine/video_out.h>
@@ -145,6 +145,9 @@ struct xv_driver_s {
 
   pthread_mutex_t    main_mutex;
 
+  /* color matrix switching */
+  int                cm_active, cm_state;
+  xcb_atom_t         cm_atom;
 };
 
 typedef struct {
@@ -153,6 +156,10 @@ typedef struct {
   config_values_t     *config;
   xine_t              *xine;
 } xv_class_t;
+
+/* import common color matrix stuff */
+#define CM_DRIVER_T xv_driver_t
+#include "color_matrix.c"
 
 VIDEO_DEVICE_XV_DECL_BICUBIC_TYPES;
 VIDEO_DEVICE_XV_DECL_PREFER_TYPES;
@@ -581,9 +588,23 @@ static int xv_redraw_needed (vo_driver_t *this_gen) {
 static void xv_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   xv_driver_t  *this  = (xv_driver_t *) this_gen;
   xv_frame_t   *frame = (xv_frame_t *) frame_gen;
+  int cm;
   /*
   printf (LOG_MODULE ": xv_display_frame...\n");
   */
+
+  cm = cm_from_frame (frame_gen);
+  if (cm != this->cm_active) {
+    this->cm_active = cm;
+    cm = (0xc00c >> cm) & 1;
+    if (this->cm_atom != XCB_NONE) {
+      pthread_mutex_lock(&this->main_mutex);
+      xcb_xv_set_port_attribute (this->connection, this->xv_port, this->cm_atom, cm);
+      pthread_mutex_unlock(&this->main_mutex);
+      xprintf (this->xine, XINE_VERBOSITY_LOG, "video_out_xcbxv: color_matrix %s\n",
+        cm_names[cm ? 2 : 10]);
+    }
+  }
 
   /*
    * queue frames (deinterlacing)
@@ -962,6 +983,8 @@ static void xv_dispose (vo_driver_t *this_gen) {
 
   _x_alphablend_free(&this->alphablend_extra_data);
 
+  cm_close (this);
+
   free (this);
 }
 
@@ -1288,6 +1311,7 @@ static vo_driver_t *open_plugin(video_driver_class_t *class_gen, const void *vis
   this->xoverlay                = NULL;
   this->ovl_changed             = 0;
   this->xine                    = class->xine;
+  this->cm_atom                 = XCB_NONE;
 
   this->vo_driver.get_capabilities     = xv_get_capabilities;
   this->vo_driver.alloc_frame          = xv_alloc_frame;
@@ -1320,6 +1344,8 @@ static vo_driver_t *open_plugin(video_driver_class_t *class_gen, const void *vis
     this->props[VO_PROP_ASPECT_RATIO].value  = XINE_VO_ASPECT_AUTO;
   this->props[VO_PROP_ZOOM_X].value          = 100;
   this->props[VO_PROP_ZOOM_Y].value          = 100;
+
+  cm_init (this);
 
   /*
    * check this adaptor's capabilities
@@ -1367,6 +1393,30 @@ static vo_driver_t *open_plugin(video_driver_class_t *class_gen, const void *vis
 	  xv_check_capability (this, VO_PROP_GAMMA, attribute_it.data,
 			       adaptor_it.data->base_id,
 			       NULL, NULL, NULL);
+	} else if(!strcmp(name, "XV_ITURBT_709")) {
+	  xcb_xv_get_port_attribute_cookie_t get_attribute_cookie;
+	  xcb_xv_get_port_attribute_reply_t *get_attribute_reply;
+	  xcb_intern_atom_cookie_t atom_cookie;
+	  xcb_intern_atom_reply_t *atom_reply;
+	  pthread_mutex_lock(&this->main_mutex);
+	  atom_cookie = xcb_intern_atom (this->connection, 0, 13, name);
+	  atom_reply = xcb_intern_atom_reply (this->connection, atom_cookie, NULL);
+	  if (atom_reply) {
+	    this->cm_atom = atom_reply->atom;
+	    free (atom_reply);
+	  }
+	  if (this->cm_atom != XCB_NONE) {
+	    get_attribute_cookie = xcb_xv_get_port_attribute (this->connection,
+	      this->xv_port, this->cm_atom);
+	    get_attribute_reply = xcb_xv_get_port_attribute_reply (this->connection,
+	      get_attribute_cookie, NULL);
+	    if (get_attribute_reply) {
+	      this->cm_active = get_attribute_reply->value ? 2 : 10;
+	      free(get_attribute_reply);
+	      this->capabilities |= VO_CAP_COLOR_MATRIX;
+	    }
+	  }
+	  pthread_mutex_unlock(&this->main_mutex);
 	} else if(!strcmp(name, "XV_COLORKEY")) {
 	  this->capabilities |= VO_CAP_COLORKEY;
 	  xv_check_capability (this, VO_PROP_COLORKEY, attribute_it.data,

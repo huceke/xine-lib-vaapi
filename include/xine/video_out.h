@@ -293,6 +293,11 @@ struct xine_video_port_s {
 #define VO_CHROMA_422        32 /* used by VDPAU, default is chroma_420 */
 #define VO_STILL_IMAGE       64
 
+/* ((mpeg_color_matrix << 1) | color_range) inside frame.flags bits 11-8 */
+#define VO_FULLRANGE 0x100
+#define VO_GET_FLAGS_CM(flags) ((flags >> 8) & 15)
+#define VO_SET_FLAGS_CM(cm,flags) flags = ((flags) & ~0xf00) | (((cm) & 15) << 8)
+
 /* video driver capabilities */
 #define VO_CAP_YV12                   0x00000001 /* driver can handle YUV 4:2:0 pictures */
 #define VO_CAP_YUY2                   0x00000002 /* driver can handle YUY2 pictures */
@@ -305,6 +310,8 @@ struct xine_video_port_s {
 #define VO_CAP_VDPAU_MPEG12           0x00000100 /* driver can use VDPAU for mpeg1/2 */
 #define VO_CAP_VDPAU_VC1              0x00000200 /* driver can use VDPAU for VC1 */
 #define VO_CAP_VDPAU_MPEG4            0x00000400 /* driver can use VDPAU for mpeg4-part2 */
+#define VO_CAP_COLOR_MATRIX           0x00004000 /* driver can use alternative yuv->rgb matrices */
+#define VO_CAP_FULLRANGE              0x00008000 /* driver handles fullrange yuv */
 #define VO_CAP_HUE                    0x00010000
 #define VO_CAP_SATURATION             0x00020000
 #define VO_CAP_CONTRAST               0x00040000

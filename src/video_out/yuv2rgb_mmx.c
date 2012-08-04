@@ -70,13 +70,18 @@ struct mmx_csc_s {
 extern const int32_t Inverse_Table_6_9[8][4];
 
 void mmx_yuv2rgb_set_csc_levels(yuv2rgb_factory_t *this,
-				int brightness, int contrast, int saturation)
+  int brightness, int contrast, int saturation, int colormatrix)
 {
-  int crv, cbu, cgu, cgv, cty;
-  int i;
+  int i, cty;
 
   int yoffset = -16;
   int ygain = ((1 << 16) * 255) / 219;
+
+  int cm = (colormatrix >> 1) & 7;
+  int crv = Inverse_Table_6_9[cm][0];
+  int cbu = Inverse_Table_6_9[cm][1];
+  int cgu = Inverse_Table_6_9[cm][2];
+  int cgv = Inverse_Table_6_9[cm][3];
 
   mmx_csc_t *csc;
 
@@ -85,20 +90,27 @@ void mmx_yuv2rgb_set_csc_levels(yuv2rgb_factory_t *this,
     this->table_mmx = av_mallocz(sizeof(mmx_csc_t));
   }
 
+  /* full range mode */
+  if (colormatrix & 1) {
+    yoffset = 0;
+    ygain = (1 << 16);
+
+    crv = (crv * 112 + 63) / 127;
+    cbu = (cbu * 112 + 63) / 127;
+    cgu = (cgu * 112 + 63) / 127;
+    cgv = (cgv * 112 + 63) / 127;
+  }
+
   yoffset += brightness;
   /* TV set behaviour: contrast affects color difference as well */
   saturation = (contrast * saturation + 64) >> 7;
 
   csc = (mmx_csc_t *) this->table_mmx;
 
-  crv = Inverse_Table_6_9[this->matrix_coefficients][0];
   crv = (crv * saturation + 512) / 1024;
-  cbu = Inverse_Table_6_9[this->matrix_coefficients][1];
   cbu = (cbu * saturation + 512) / 1024;
   cbu = (cbu > 32767) ? 32767 : cbu;
-  cgu = Inverse_Table_6_9[this->matrix_coefficients][2];
   cgu = (cgu * saturation + 512) / 1024;
-  cgv = Inverse_Table_6_9[this->matrix_coefficients][3];
   cgv = (cgv * saturation + 512) / 1024;
   cty = (ygain * contrast + 512) / 1024;
 

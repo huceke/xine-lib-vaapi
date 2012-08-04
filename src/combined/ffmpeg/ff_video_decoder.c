@@ -140,8 +140,11 @@ struct ff_video_decoder_s {
 #endif
 };
 
+/* import color matrix names */
+#include "../../video_out/color_matrix.c"
+
 static void ff_check_colorspace (ff_video_decoder_t *this) {
-  int i, cm;
+  int i, cm, caps;
 
 #ifdef AVCODEC_HAS_COLORSPACE
   cm = this->context->colorspace << 1;
@@ -162,17 +165,27 @@ static void ff_check_colorspace (ff_video_decoder_t *this) {
   if (cm != this->color_matrix) {
     this->color_matrix = cm;
     xprintf (this->stream->xine, XINE_VERBOSITY_LOG,
-      "ffmpeg_video_dec: color matrix #%d\n", cm >> 1);
+      "ffmpeg_video_dec: color matrix #%d [%s]\n", cm >> 1, cm_names[cm & 15]);
+
+    caps = this->stream->video_out->get_capabilities (this->stream->video_out);
+
+    if (!(caps & VO_CAP_COLOR_MATRIX)) {
+      xprintf (this->stream->xine, XINE_VERBOSITY_LOG,
+        "ffmpeg_video_dec: video out plugin does not support color matrix switching\n");
+      cm &= 1;
+    }
 
     this->full2mpeg = 0;
-    if (cm & 1) {
+    if ((cm & 1) && !(caps & VO_CAP_FULLRANGE)) {
       /* sigh. fall back to manual conversion */
+      cm &= ~1;
       this->full2mpeg = 1;
       for (i = 0; i < 256; i++) {
         this->ytab[i] = (219 * i + 127) / 255 + 16;
         this->ctab[i] = 112 * (i - 128) / 127 + 128;
       }
     }
+    VO_SET_FLAGS_CM (cm, this->frame_flags);
   }
 }
 

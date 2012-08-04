@@ -62,7 +62,7 @@ typedef struct {
   int               width, height, type;
 } test_input_plugin_t;
 
-static const char * const test_names[TEST_MAX_NAMES + 1] = {
+static const char * const test_names[TEST_MAX_NAMES + 1 + 1] = {
   "test://",
   "test://color_circle.bmp",
   "test://rgb_levels.bmp",
@@ -73,7 +73,21 @@ static const char * const test_names[TEST_MAX_NAMES + 1] = {
   "test://rgb_levels.y4m",
   "test://saturation_levels.y4m",
   "test://uv_square.y4m",
-  "test://y_resolution.y4m"
+  "test://y_resolution.y4m",
+  NULL
+};
+
+const char * const test_titles[TEST_MAX_NAMES/2] = {
+  N_("Color Circle"),
+  N_("RGB Levels"),
+  N_("Saturation Levels"),
+  N_("UV Square"),
+  N_("Luminance Resolution"),
+};
+
+static const char * const test_cm[] = {
+  " ITU-R 470 BG / SDTV",
+  " ITU-R 709 / HDTV",
 };
 
 /* TJ. the generator code - actually a cut down version of my "testvideo" project */
@@ -419,6 +433,16 @@ static int test_make (test_input_plugin_t * this) {
     }
   }
 
+  /* human-friendly title */
+  if (type > 0 && type <= TEST_MAX_NAMES / 2) {
+    char *title = _x_asprintf("%s (%s)%s",
+                              _(test_titles[type-1]),
+                              yuv ? "YUV" : "RGB",
+                              yuv ? test_cm[!!hdtv] : "");
+    _x_meta_info_set(this->stream, XINE_META_INFO_TITLE, title);
+    free(title);
+  }
+
   return (1);
 }
 
@@ -579,7 +603,7 @@ static input_plugin_t *test_class_get_instance (input_class_t *cls_gen,
 
 static const char * const *test_class_get_autoplay_list (input_class_t *this_gen, int *num_files)
 {
-  *num_files = sizeof(test_names) / sizeof(test_names[0]) - 1;
+  *num_files = sizeof(test_names) / sizeof(test_names[0]) - 2;
 
   return test_names + 1;
 }

@@ -48,7 +48,7 @@
 #define LOG_MODULE "input_bluray"
 #define LOG_VERBOSE
 
-#define LOG
+/*#define LOG*/
 
 #define LOGMSG(x...)  xine_log (this->stream->xine, XINE_LOG_MSG, "input_bluray: " x);
 

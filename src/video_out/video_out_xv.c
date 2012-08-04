@@ -156,6 +156,9 @@ struct xv_driver_s {
 
   void              *user_data;
 
+  /* color matrix switching */
+  int                cm_active, cm_state;
+  Atom               cm_atom;
 };
 
 typedef struct {
@@ -164,6 +167,10 @@ typedef struct {
   config_values_t     *config;
   xine_t              *xine;
 } xv_class_t;
+
+/* import common color matrix stuff */
+#define CM_DRIVER_T xv_driver_t
+#include "color_matrix.c"
 
 static int gX11Fail;
 
@@ -669,9 +676,23 @@ static double timeOfDay()
 static void xv_display_frame (vo_driver_t *this_gen, vo_frame_t *frame_gen) {
   xv_driver_t  *this  = (xv_driver_t *) this_gen;
   xv_frame_t   *frame = (xv_frame_t *) frame_gen;
+  int cm;
   /*
   printf (LOG_MODULE ": xv_display_frame...\n");
   */
+
+  cm = cm_from_frame (frame_gen);
+  if (cm != this->cm_active) {
+    this->cm_active = cm;
+    cm = (0xc00c >> cm) & 1;
+    if (this->cm_atom != None) {
+      LOCK_DISPLAY(this);
+      XvSetPortAttribute (this->display, this->xv_port, this->cm_atom, cm);
+      UNLOCK_DISPLAY(this);
+      xprintf (this->xine, XINE_VERBOSITY_LOG, "video_out_xv: color_matrix %s\n",
+        cm_names[cm ? 2 : 10]);
+    }
+  }
 
   /*
    * queue frames (deinterlacing)
@@ -1035,6 +1056,8 @@ static void xv_dispose (vo_driver_t *this_gen) {
 
   _x_alphablend_free(&this->alphablend_extra_data);
 
+  cm_close (this);
+
   free (this);
 }
 
@@ -1336,6 +1359,8 @@ static vo_driver_t *open_plugin_2 (video_driver_class_t *class_gen, const void *
   this->x11_old_error_handler   = NULL;
   this->xine                    = class->xine;
 
+  this->cm_atom                 = None;
+
   LOCK_DISPLAY(this);
   XAllocNamedColor (this->display,
 		    DefaultColormap(this->display, this->screen),
@@ -1373,6 +1398,8 @@ static vo_driver_t *open_plugin_2 (video_driver_class_t *class_gen, const void *
     this->props[VO_PROP_ASPECT_RATIO].value  = XINE_VO_ASPECT_AUTO;
   this->props[VO_PROP_ZOOM_X].value          = 100;
   this->props[VO_PROP_ZOOM_Y].value          = 100;
+
+  cm_init (this);
 
   /*
    * check this adaptor's capabilities
@@ -1419,6 +1446,15 @@ static vo_driver_t *open_plugin_2 (video_driver_class_t *class_gen, const void *
 	  xv_check_capability (this, VO_PROP_GAMMA, attr[k],
 			       adaptor_info[adaptor_num].base_id,
 			       NULL, NULL, NULL);
+	} else if(!strcmp(name, "XV_ITURBT_709")) {
+	  LOCK_DISPLAY(this);
+	  this->cm_atom = XInternAtom (this->display, name, False);
+	  if (this->cm_atom != None) {
+	    XvGetPortAttribute (this->display, this->xv_port, this->cm_atom, &this->cm_active);
+	    this->cm_active = this->cm_active ? 2 : 10;
+	    this->capabilities |= VO_CAP_COLOR_MATRIX;
+	  }
+	  UNLOCK_DISPLAY(this);
 	} else if(!strcmp(name, "XV_COLORKEY")) {
 	  this->capabilities |= VO_CAP_COLORKEY;
 	  xv_check_capability (this, VO_PROP_COLORKEY, attr[k],

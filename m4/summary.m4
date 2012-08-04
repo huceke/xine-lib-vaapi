@@ -208,6 +208,9 @@ AC_DEFUN([XINE_LIB_SUMMARY], [
                 echo "   - OpenGL"
             fi
         fi
+        if test x"$have_opengl2" = x"yes"; then
+            echo "   - OpenGL 2.0 (with bicubic scaling)"
+        fi
         test x"$have_vdpau" = x"yes"       && echo "   - vdpau (X11 Video Decode and Presentation API for Unix)"
         if test x"$have_sunfb" = x"yes"; then
             if test x"$have_sundga" = x"yes"; then
