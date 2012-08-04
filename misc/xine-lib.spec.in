@@ -1,6 +1,6 @@
 %define shortname  libxine
-%define name       libxine2
-%define version    @SPEC_VERSION@
+%define name       libxine1
+%define version    @PACKAGE_VERSION@
 %define release    0
 
 %define major      1
@@ -14,6 +14,9 @@
 %endif
 %if %{?BUILD_ALSA:0}%{!?BUILD_ALSA:1}
 %define BUILD_ALSA      0
+%endif
+%if %{?BUILD_ARTS:0}%{!?BUILD_ARTS:1}
+%define BUILD_ARTS      0
 %endif
 %if %{?BUILD_DEVEL:0}%{!?BUILD_DEVEL:1}
 %define BUILD_DEVEL     1
@@ -659,7 +662,7 @@ libxine Soundausgabeplugin für den pulseaudio-Soundserver
 
 
 %prep
-%setup -q -n @TAR_NAME@
+%setup -q -n @PACKAGE_TARNAME@-@PACKAGE_VERSION@
 
 %build
 export CFLAGS="${RPM_OPT_FLAGS}"
@@ -686,7 +689,7 @@ fi
 %if %BUILD_STK
             --with-libstk \
 %endif
-            --enable-syncfb --without-internal-vcdlibs
+            --without-internal-vcdlibs
 
 # Error in libfaad when compiling with mmx or sse enabled, remove it
 %{__mv} contrib/libfaad/Makefile contrib/libfaad/Makefile_save
@@ -704,7 +707,7 @@ echo "%defattr(-,root,root)" > ${RPM_BUILD_DIR}/filelist_%{name}_zw
 %if %BUILD_DEVEL
 echo "%doc README TODO AUTHORS COPYING ChangeLog" >> ${RPM_BUILD_DIR}/filelist_%{name}_zw
 %else
-echo "%doc README TODO AUTHORS COPYING ChangeLog doc/hackersguide/*.sgml doc/hackersguide/*.fig doc/hackersguide/README" >> ${RPM_BUILD_DIR}/filelist_%{name}_zw
+echo "%doc README TODO AUTHORS COPYING ChangeLog doc/hackersguide/*.html doc/hackersguide/*.png doc/hackersguide/README" >> ${RPM_BUILD_DIR}/filelist_%{name}_zw
 %endif
 find . -type f | %{__sed} 's,^\.%{_datadir}/doc,\%doc %{_datadir}/doc,' | %{__sed} 's,^\.,,' >> ${RPM_BUILD_DIR}/filelist_%{name}_zw
 find . -type l | %{__sed} 's,^\.%{_datadir}/doc,\%doc %{_datadir}/doc,' | %{__sed} 's,^\.,,' >> ${RPM_BUILD_DIR}/filelist_%{name}_zw
@@ -715,7 +718,7 @@ find . -type d | %{__grep} xine | %{__sed} 's,^\.,\%dir ,' >> ${RPM_BUILD_DIR}/f
 
 %if %BUILD_DEVEL
 echo "%defattr(-,root,root)" > ${RPM_BUILD_DIR}/filelist_%{name}_devel
-echo "%doc doc/hackersguide/*.sgml doc/hackersguide/*.fig doc/hackersguide/README" >> ${RPM_BUILD_DIR}/filelist_%{name}_devel
+echo "%doc doc/hackersguide/*.html doc/hackersguide/*.png doc/hackersguide/README" >> ${RPM_BUILD_DIR}/filelist_%{name}_devel
 %{__mv} ${RPM_BUILD_DIR}/filelist_%{name} ${RPM_BUILD_DIR}/filelist_%{name}_old
 %{__grep} -E "/include/|dhahelper\.o|libxine*\.(so|la)$|\.m4$" ${RPM_BUILD_DIR}/filelist_%{name}_old | %{__cat} - >> ${RPM_BUILD_DIR}/filelist_%{name}_devel
 %{__grep} -v -E "/include/|dhahelper\.o|libxine*\.(so|la)$|\.m4$" ${RPM_BUILD_DIR}/filelist_%{name}_old | %{__cat} - > ${RPM_BUILD_DIR}/filelist_%{name}

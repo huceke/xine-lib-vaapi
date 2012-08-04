@@ -111,7 +111,7 @@ static void yuv_decode_data (video_decoder_t *this_gen,
     free (this->buf);
     this->buf = NULL;
 
-    this->bufsize = this->width = this->height;
+    this->bufsize = 0;
     this->size = 0;
 
     this->decoder_ok = 1;

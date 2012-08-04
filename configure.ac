@@ -448,6 +448,13 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[asm(".align 3");]])],
                   [AC_DEFINE([ASMALIGN_1SLN], [1],
                              [define if '.align n' means alignment to (1 << n) - byte boundaries])])
 
+dnl avx instruction set support
+AC_MSG_CHECKING([for AVX assembler])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[asm("vmovaps %ymm1, %ymm0");]])],
+                  [AC_DEFINE([HAVE_AVX], [1],
+                             [define if compiler supports avx inline assembler])
+			     AC_MSG_RESULT(yes)], [AC_MSG_RESULT(no)])
+
 CC_ATTRIBUTE_ALIGNED
 
 CC_ATTRIBUTE_VISIBILITY([protected],

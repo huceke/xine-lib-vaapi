@@ -204,11 +204,14 @@ typedef struct {
   PFNMYGLGENTEXTURESEXTPROC          glGenTexturesEXT;
   PFNMYGLBINDTEXTUREEXTPROC          glBindTextureEXT;
 
-  int                yuv2rgb_brightness;
-  int                yuv2rgb_contrast;
-  int                yuv2rgb_saturation;
+  int                brightness;
+  int                contrast;
+  int                saturation;
   uint8_t           *yuv2rgb_cmap;
   yuv2rgb_factory_t *yuv2rgb_factory;
+
+  /* color matrix switching */
+  int                cm_yuv2rgb, cm_fragprog, cm_state;
 
   /* Frame state */
   opengl_frame_t    *frame[NUM_FRAMES_BACKLOG];
@@ -245,6 +248,12 @@ typedef struct {
     int fallback;
 } opengl_render_t;
 
+
+/* import common color matrix stuff */
+#define CM_DRIVER_T opengl_driver_t
+#include "color_matrix.c"
+
+extern const int32_t Inverse_Table_6_9[8][4]; /* from yuv2rgb.c */
 
 /*
  * Render functions
@@ -929,7 +938,48 @@ static int render_setup_torus (opengl_driver_t *this) {
 static int render_setup_fp_yuv (opengl_driver_t *this) {
   GLint errorpos;
   int ret;
-  static const char *fragprog_yuv =
+
+  int i = (this->cm_fragprog >> 1) & 7;
+  int vr = Inverse_Table_6_9[i][0];
+  int ug = Inverse_Table_6_9[i][2];
+  int vg = Inverse_Table_6_9[i][3];
+  int ub = Inverse_Table_6_9[i][1];
+  int ygain, yoffset;
+  /* TV set behaviour: contrast affects colour difference as well */
+  int saturation = (this->saturation * this->contrast + 64) / 128;
+
+  static char fragprog_yuv[512];
+  const char *s = "";
+
+  /* full range mode */
+  if (this->cm_fragprog & 1) {
+    ygain = (1000 * this->contrast + 64) / 128;
+    yoffset = this->brightness * ygain / 255;
+    /* be careful to stay within 32 bit */
+    vr = (saturation * (112 / 4) * vr + 127 * 16) / (127 * 128 / 4);
+    ug = (saturation * (112 / 4) * ug + 127 * 16) / (127 * 128 / 4);
+    vg = (saturation * (112 / 4) * vg + 127 * 16) / (127 * 128 / 4);
+    ub = (saturation * (112 / 4) * ub + 127 * 16) / (127 * 128 / 4);
+  } else {
+    ygain = (1000 * 255 * this->contrast + 219 * 64) / (219 * 128);
+    yoffset = (this->brightness - 16) * ygain / 255;
+    vr = (saturation * vr + 64) / 128;
+    ug = (saturation * ug + 64) / 128;
+    vg = (saturation * vg + 64) / 128;
+    ub = (saturation * ub + 64) / 128;
+  }
+
+  vr = 1000 * vr / 65536;
+  ug = 1000 * ug / 65536;
+  vg = 1000 * vg / 65536;
+  ub = 1000 * ub / 65536;
+
+  if (yoffset < 0) {
+    s = "-";
+    yoffset = -yoffset;
+  }
+
+  sprintf (fragprog_yuv,
     "!!ARBfp1.0\n"
     "ATTRIB tex = fragment.texcoord[0];"
     "PARAM  off = program.env[0];"
@@ -941,16 +991,28 @@ static int render_setup_fp_yuv (opengl_driver_t *this) {
     "ADD u, v, off.xyww;"
     "ADD v, v, off.zyww;"
     "TEX tmp.x, u, texture[0], 2D;"
-    "MAD res, res, 1.164, -0.073;" /* -1.164*16/255 */
+    "MAD res, res, %d.%03d, %s%d.%03d;"
     "TEX tmp.y, v, texture[0], 2D;"
     "SUB tmp, tmp, { .5, .5 };"
-    "MAD res, { 0, -.391, 2.018 }, tmp.xxxw, res;"
-    "MAD result.color, { 1.596, -.813, 0 }, tmp.yyyw, res;"
-    "END";
+    "MAD res, { 0, -%d.%03d, %d.%03d }, tmp.xxxw, res;"
+    "MAD result.color, { %d.%03d, -%d.%03d, 0 }, tmp.yyyw, res;"
+    "END",
+    /* nasty: "%.3f" may use comma as decimal point... */
+    ygain / 1000, ygain % 1000,
+    s, yoffset / 1000, yoffset % 1000,
+    ug / 1000, ug % 1000,
+    ub / 1000, ub % 1000,
+    vr / 1000, vr % 1000,
+    vg / 1000, vg % 1000);
 
   ret = render_setup_tex2d (this);
   if (! this->has_fragprog)
     return 0;
+
+  xprintf (this->xine, XINE_VERBOSITY_LOG,
+    "video_out_open_opengl_fragprog: b %d c %d s %d [%s]\n",
+    this->brightness, this->contrast, this->saturation, cm_names[this->cm_fragprog]);
+
   if (this->fprog == (GLuint)-1)
     this->glGenProgramsARB (1, &this->fprog);
   this->glBindProgramARB   (MYGL_FRAGMENT_PROGRAM_ARB, this->fprog);
@@ -1058,6 +1120,15 @@ static void *render_run (opengl_driver_t *this) {
       this->render_frame_changed = 0;
       pthread_mutex_unlock (&this->render_action_mutex);
       if (this->context && frame) {
+	/* update fragprog if color matrix changed */
+	if (this->render_fun_id == 0) {
+	  int cm = cm_from_frame ((vo_frame_t *)frame);
+	  if (cm != this->cm_fragprog) {
+	    this->cm_fragprog = cm;
+	    this->render_action = RENDER_SETUP;
+	    break;
+	  }
+	}
 	XLockDisplay (this->display);
 	CHECKERR ("pre-render");
 	ret = 1;
@@ -1209,7 +1280,8 @@ static void *render_run (opengl_driver_t *this) {
 
 static uint32_t opengl_get_capabilities (vo_driver_t *this_gen) {
 /*   opengl_driver_t *this = (opengl_driver_t *) this_gen; */
-  uint32_t capabilities = VO_CAP_YV12 | VO_CAP_YUY2 | VO_CAP_BRIGHTNESS | VO_CAP_CONTRAST | VO_CAP_SATURATION;
+  uint32_t capabilities = VO_CAP_YV12 | VO_CAP_YUY2 | VO_CAP_BRIGHTNESS
+    | VO_CAP_CONTRAST | VO_CAP_SATURATION | VO_CAP_COLOR_MATRIX | VO_CAP_FULLRANGE;
 
   /* TODO: somehow performance goes down during the first few frames */
 /*   if (this->xoverlay) */
@@ -1220,7 +1292,8 @@ static uint32_t opengl_get_capabilities (vo_driver_t *this_gen) {
 
 static void opengl_frame_proc_slice (vo_frame_t *vo_img, uint8_t **src) {
   opengl_frame_t  *frame = (opengl_frame_t *) vo_img ;
-/*   opengl_driver_t *this = (opengl_driver_t *) vo_img->driver; */
+  opengl_driver_t *this = (opengl_driver_t *) vo_img->driver;
+  int cm;
 
   vo_img->proc_called = 1;
   if (! frame->rgb_dst)
@@ -1234,6 +1307,16 @@ static void opengl_frame_proc_slice (vo_frame_t *vo_img, uint8_t **src) {
     /* TODO: opengl *could* support this?!? */
     /* cropping will be performed by video_out.c */
     return;
+  }
+
+  cm = cm_from_frame (vo_img);
+  if (cm != this->cm_yuv2rgb) {
+    this->cm_yuv2rgb = cm;
+    this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
+      this->brightness, this->contrast, this->saturation, cm);
+    xprintf (this->xine, XINE_VERBOSITY_LOG,
+      "video_out_opengl: b %d c %d s %d [%s]\n",
+      this->brightness, this->contrast, this->saturation, cm_names[cm]);
   }
 
   if (frame->format == XINE_IMGFMT_YV12)
@@ -1603,11 +1686,11 @@ static int opengl_get_property (vo_driver_t *this_gen, int property) {
   case VO_PROP_MAX_NUM_FRAMES:
     return 15;
   case VO_PROP_BRIGHTNESS:
-    return this->yuv2rgb_brightness;
+    return this->brightness;
   case VO_PROP_CONTRAST:
-    return this->yuv2rgb_contrast;
+    return this->contrast;
   case VO_PROP_SATURATION:
-    return this->yuv2rgb_saturation;
+    return this->saturation;
   case VO_PROP_WINDOW_WIDTH:
     return this->sc.gui_width;
   case VO_PROP_WINDOW_HEIGHT:
@@ -1636,27 +1719,21 @@ static int opengl_set_property (vo_driver_t *this_gen,
 	    "video_out_opengl: aspect ratio changed to %s\n", _x_vo_scale_aspect_ratio_name_table[value]);
     break;
   case VO_PROP_BRIGHTNESS:
-    this->yuv2rgb_brightness = value;
-    this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
-					   this->yuv2rgb_brightness,
-					   this->yuv2rgb_contrast,
-					   this->yuv2rgb_saturation);
+    this->brightness = value;
+    this->cm_yuv2rgb = 0;
+    this->cm_fragprog = 0;
     this->sc.force_redraw = 1;
     break;
   case VO_PROP_CONTRAST:
-    this->yuv2rgb_contrast = value;
-    this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
-					   this->yuv2rgb_brightness,
-					   this->yuv2rgb_contrast,
-					   this->yuv2rgb_saturation);
+    this->contrast = value;
+    this->cm_yuv2rgb = 0;
+    this->cm_fragprog = 0;
     this->sc.force_redraw = 1;
     break;
   case VO_PROP_SATURATION:
-    this->yuv2rgb_saturation = value;
-    this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
-					   this->yuv2rgb_brightness,
-					   this->yuv2rgb_contrast,
-					   this->yuv2rgb_saturation);
+    this->saturation = value;
+    this->cm_yuv2rgb = 0;
+    this->cm_fragprog = 0;
     this->sc.force_redraw = 1;
     break;
   default:
@@ -1805,6 +1882,8 @@ static void opengl_dispose (vo_driver_t *this_gen) {
 
   this->yuv2rgb_factory->dispose (this->yuv2rgb_factory);
 
+  cm_close (this);
+
   if (this->xoverlay) {
     XLockDisplay (this->display);
     x11osd_destroy (this->xoverlay);
@@ -1880,16 +1959,13 @@ static vo_driver_t *opengl_open_plugin (video_driver_class_t *class_gen, const v
   this->vo_driver.dispose              = opengl_dispose;
   this->vo_driver.redraw_needed        = opengl_redraw_needed;
 
-  this->yuv2rgb_brightness = 0;
-  this->yuv2rgb_contrast   = 128;
-  this->yuv2rgb_saturation = 128;
+  this->brightness = 0;
+  this->contrast   = 128;
+  this->saturation = 128;
 
-  this->yuv2rgb_factory = yuv2rgb_factory_init (YUV_FORMAT, YUV_SWAP_MODE,
-						NULL);
-  this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
-					 this->yuv2rgb_brightness,
-					 this->yuv2rgb_contrast,
-					 this->yuv2rgb_saturation);
+  cm_init (this);
+
+  this->yuv2rgb_factory = yuv2rgb_factory_init (YUV_FORMAT, YUV_SWAP_MODE, NULL);
 
   XLockDisplay (this->display);
   this->xoverlay = x11osd_create (this->xine, this->display, this->screen,

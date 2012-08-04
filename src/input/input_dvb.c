@@ -1142,6 +1142,8 @@ static void parse_pmt(dvb_input_plugin_t *this, const unsigned char *buf, int se
     switch (buf[0]) {
       case 0x01:
       case 0x02:
+      case 0x10:
+      case 0x1b:
         if(!has_video) {
           xprintf(this->stream->xine,XINE_VERBOSITY_LOG,"input_dvb: Adding VIDEO     : PID 0x%04x\n", elementary_pid);
 	  dvb_set_pidfilter(this, VIDFILTER, elementary_pid, DMX_PES_VIDEO, DMX_OUT_TS_TAP);
@@ -1151,6 +1153,8 @@ static void parse_pmt(dvb_input_plugin_t *this, const unsigned char *buf, int se
 
       case 0x03:
       case 0x04:
+      case 0x0f:
+      case 0x11:
         if(!has_audio) {
 	  xprintf(this->stream->xine,XINE_VERBOSITY_LOG,"input_dvb: Adding AUDIO     : PID 0x%04x\n", elementary_pid);
 	  dvb_set_pidfilter(this, AUDFILTER, elementary_pid, DMX_PES_AUDIO, DMX_OUT_TS_TAP);

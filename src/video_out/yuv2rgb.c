@@ -2289,7 +2289,7 @@ static int div_round (int dividend, int divisor)
 }
 
 static void yuv2rgb_set_csc_levels (yuv2rgb_factory_t *this,
-				    int brightness, int contrast, int saturation)
+  int brightness, int contrast, int saturation, int colormatrix)
 {
   int i;
   uint8_t table_Y[1024];
@@ -2300,18 +2300,40 @@ static void yuv2rgb_set_csc_levels (yuv2rgb_factory_t *this,
   void *table_r = 0, *table_g = 0, *table_b = 0;
   int shift_r = 0, shift_g = 0, shift_b = 0;
 
-  int crv = Inverse_Table_6_9[this->matrix_coefficients][0];
-  int cbu = Inverse_Table_6_9[this->matrix_coefficients][1];
-  int cgu = -Inverse_Table_6_9[this->matrix_coefficients][2];
-  int cgv = -Inverse_Table_6_9[this->matrix_coefficients][3];
+  int yoffset = -16;
+  int ygain = (1 << 16) * 255 / 219;
+
+  int cm = (colormatrix >> 1) & 7;
+  int crv = Inverse_Table_6_9[cm][0];
+  int cbu = Inverse_Table_6_9[cm][1];
+  int cgu = -Inverse_Table_6_9[cm][2];
+  int cgv = -Inverse_Table_6_9[cm][3];
 
   int mode = this->mode;
   int swapped = this->swapped;
 
+  /* nasty workaround for xine-ui not sending exact defaults */
+  if (brightness == -1) brightness = 0;
+  if (contrast == 127) contrast = 128;
+  if (saturation == 127) saturation = 128;
+
+  /* full range mode */
+  if (colormatrix & 1) {
+    yoffset = 0;
+    ygain = (1 << 16);
+
+    crv = (crv * 112 + 63) / 127;
+    cbu = (cbu * 112 + 63) / 127;
+    cgu = (cgu * 112 + 63) / 127;
+    cgv = (cgv * 112 + 63) / 127;
+  }
+
+  yoffset += brightness;
+    
   for (i = 0; i < 1024; i++) {
     int j;
 
-    j = (76309 * (i - 384 - 16 + brightness) + 32768) >> 16;
+    j = (ygain * (i - 384 + yoffset) + 32768) >> 16;
     j = (j < 0) ? 0 : ((j > 255) ? 255 : j);
     table_Y[i] = j;
   }
@@ -2470,16 +2492,16 @@ static void yuv2rgb_set_csc_levels (yuv2rgb_factory_t *this,
 
   for (i = 0; i < 256; i++) {
     this->table_rV[i] = (((uint8_t *) table_r) +
-			 entry_size * div_round (crv * (i-128), 76309));
+			 entry_size * div_round (crv * (i-128), ygain));
     this->table_gU[i] = (((uint8_t *) table_g) +
-			 entry_size * div_round (cgu * (i-128), 76309));
-    this->table_gV[i] = entry_size * div_round (cgv * (i-128), 76309);
+			 entry_size * div_round (cgu * (i-128), ygain));
+    this->table_gV[i] = entry_size * div_round (cgv * (i-128), ygain);
     this->table_bU[i] = (((uint8_t *)table_b) +
-			 entry_size * div_round (cbu * (i-128), 76309));
+			 entry_size * div_round (cbu * (i-128), ygain));
   }
 
 #if defined(ARCH_X86) || defined(ARCH_X86_64)
-  mmx_yuv2rgb_set_csc_levels (this, brightness, contrast, saturation);
+  mmx_yuv2rgb_set_csc_levels (this, brightness, contrast, saturation, colormatrix);
 #endif
 }
 
@@ -3243,12 +3265,11 @@ yuv2rgb_factory_t* yuv2rgb_factory_init (int mode, int swapped,
   this->create_converter    = yuv2rgb_create_converter;
   this->set_csc_levels      = yuv2rgb_set_csc_levels;
   this->dispose             = yuv2rgb_factory_dispose;
-  this->matrix_coefficients = 6;
   this->table_base          = NULL;
   this->table_mmx           = NULL;
 
 
-  yuv2rgb_set_csc_levels (this, 0, 128, 128);
+  yuv2rgb_set_csc_levels (this, 0, 128, 128, CM_DEFAULT);
 
   /*
    * auto-probe for the best yuv2rgb function

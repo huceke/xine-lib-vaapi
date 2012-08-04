@@ -12,7 +12,7 @@ if ENABLE_MACOSX_VIDEO
 SUBDIRS += macosx
 endif
 
-EXTRA_DIST = video_out_directx.c video_out_macosx.m
+EXTRA_DIST = video_out_directx.c video_out_macosx.m color_matrix.c
 
 noinst_HEADERS = yuv2rgb.h x11osd.h xcbosd.h xv_common.h
 
@@ -30,6 +30,9 @@ xxmc_module = xineplug_vo_out_xxmc.la
 endif
 if ENABLE_OPENGL
 opengl_module = xineplug_vo_out_opengl.la
+if ENABLE_OPENGL2
+opengl2_module = xineplug_vo_out_opengl2.la
+endif
 endif
 if ENABLE_SUNFB
 if ENABLE_SUNDGA
@@ -106,6 +109,7 @@ YUV_LIBS = libyuv2rgb.la $(XINE_LIB) $(MLIB_LIBS) $(AVUTIL_LIBS)
 
 xineplug_LTLIBRARIES = $(xshm_module) $(xv_module) $(xvmc_module) \
                   $(opengl_module) \
+                  $(opengl2_module) \
                   $(pgx64_module) $(pgx32_module)\
 	          $(vidix_module) \
 	          $(aa_module) \
@@ -160,6 +164,10 @@ xineplug_vo_out_opengl_la_SOURCES = video_out_opengl.c myglext.h $(X11OSD)
 xineplug_vo_out_opengl_la_LIBADD = $(YUV_LIBS) $(OPENGL_LIBS) $(GLUT_LIBS) \
 	$(GLUT_LIBS) $(GLU_LIBS) $(X_LIBS) $(PTHREAD_LIBS) $(DYNAMIC_LD_LIBS) $(LTLIBINTL)
 xineplug_vo_out_opengl_la_CFLAGS = $(AM_CFLAGS) $(X_CFLAGS) $(AVUTIL_CFLAGS) -fno-strict-aliasing
+
+xineplug_vo_out_opengl2_la_SOURCES = video_out_opengl2.c
+xineplug_vo_out_opengl2_la_LIBADD = $(YUV_LIBS) $(OPENGL_LIBS) $(X_LIBS) $(PTHREAD_LIBS) $(DYNAMIC_LD_LIBS) $(LTLIBINTL)
+xineplug_vo_out_opengl2_la_CFLAGS = $(AM_CFLAGS) $(X_CFLAGS) $(AVUTIL_CFLAGS) -fno-strict-aliasing
 
 xineplug_vo_out_pgx64_la_SOURCES = video_out_pgx64.c
 xineplug_vo_out_pgx64_la_LIBADD = $(XINE_LIB) $(X_LIBS) $(SUNDGA_LIBS) $(PTHREAD_LIBS) $(LTLIBINTL)

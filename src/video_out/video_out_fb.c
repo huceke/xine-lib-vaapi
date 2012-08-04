@@ -622,7 +622,8 @@ static int fb_set_property(vo_driver_t *this_gen, int property, int value)
       this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
                                              this->yuv2rgb_brightness,
                                              this->yuv2rgb_contrast,
-                                             this->yuv2rgb_saturation);
+                                             this->yuv2rgb_saturation,
+                                             CM_DEFAULT);
       break;
 
     case VO_PROP_CONTRAST:
@@ -630,7 +631,8 @@ static int fb_set_property(vo_driver_t *this_gen, int property, int value)
       this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
                                              this->yuv2rgb_brightness,
                                              this->yuv2rgb_contrast,
-                                             this->yuv2rgb_saturation);
+                                             this->yuv2rgb_saturation,
+                                             CM_DEFAULT);
       break;
 
     case VO_PROP_SATURATION:
@@ -638,7 +640,8 @@ static int fb_set_property(vo_driver_t *this_gen, int property, int value)
       this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
                                              this->yuv2rgb_brightness,
                                              this->yuv2rgb_contrast,
-                                             this->yuv2rgb_saturation);
+                                             this->yuv2rgb_saturation,
+                                             CM_DEFAULT);
       break;
 
     default:
@@ -894,7 +897,8 @@ static int setup_yuv2rgb(fb_driver_t *this, config_values_t *config,
   this->yuv2rgb_factory->set_csc_levels (this->yuv2rgb_factory,
                                          this->yuv2rgb_brightness,
                                          this->yuv2rgb_contrast,
-                                         this->yuv2rgb_saturation);
+                                         this->yuv2rgb_saturation,
+                                         CM_DEFAULT);
 
   return 1;
 }

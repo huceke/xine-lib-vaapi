@@ -45,6 +45,15 @@ typedef uint32_t (*yuv2rgb_single_pixel_fun_t) (yuv2rgb_t *this, uint8_t y, uint
 #define	MODE_8_GRAY  11
 #define MODE_PALETTE 12
 
+  /*
+   * colormatrix values - (mpeg_matrix_index << 1) | fullrange
+   */
+
+#define CM_DEFAULT   10
+#define CM_SD        10
+#define CM_HD         2
+#define CM_FULLRANGE  1
+
 struct yuv2rgb_s {
   /*
    * configure converter for scaling factors
@@ -129,7 +138,7 @@ struct yuv2rgb_factory_s {
    * for all converters produced by this factory
    */
   void (*set_csc_levels) (yuv2rgb_factory_t *this,
-			  int brightness, int contrast, int saturation);
+    int brightness, int contrast, int saturation, int colormatrix);
 
   /*
    * free resources
@@ -141,8 +150,6 @@ struct yuv2rgb_factory_s {
   int      mode;
   int      swapped;
   uint8_t *cmap;
-
-  uint32_t matrix_coefficients;
 
   void    *table_base;
   void    *table_rV[256];
@@ -166,7 +173,7 @@ yuv2rgb_factory_t *yuv2rgb_factory_init (int mode, int swapped, uint8_t *colorma
  */
 
 void mmx_yuv2rgb_set_csc_levels(yuv2rgb_factory_t *this,
-				int brightness, int contrast, int saturation);
+  int brightness, int contrast, int saturation, int colormatrix);
 void yuv2rgb_init_mmxext (yuv2rgb_factory_t *this);
 void yuv2rgb_init_mmx (yuv2rgb_factory_t *this);
 void yuv2rgb_init_mlib (yuv2rgb_factory_t *this);
